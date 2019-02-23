@@ -19,7 +19,7 @@ class ImageWordsReader:
             'vertex_features': tf.FixedLenFeature((self.num_max_vertices, self.num_data_dims), tf.float32),
             'vertex_text': tf.FixedLenFeature((self.num_max_vertices, self.max_word_length), tf.uint8),
             'image': tf.FixedLenFeature((self.max_height, self.max_width), tf.uint8),
-            'global_features': tf.FixedLenFeature((self.max_height, self.max_width), tf.uint8),
+            'global_features': tf.FixedLenFeature((self.max_height, self.max_width), tf.float32),
             'adjacency_matrix_cells': tf.FixedLenFeature((self.num_max_vertices, self.max_width), tf.int64),
             'adjacency_matrix_rows': tf.FixedLenFeature((self.num_max_vertices, self.num_max_vertices), tf.int64),
             'adjacency_matrix_cols': tf.FixedLenFeature((self.num_max_vertices, self.num_max_vertices), tf.int64),
