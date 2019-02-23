@@ -1,4 +1,4 @@
-### To visitors
+### To the visitors
 This is not a complete implementation of anything. Its only a development repository which is open source. I'll remove
 this note, if at some point, this repository becomes actually usable.
 # TIES-2.0
