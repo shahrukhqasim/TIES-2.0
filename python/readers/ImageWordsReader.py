@@ -2,7 +2,7 @@ import tensorflow as tf
 
 
 class ImageWordsReader:
-    def __init__(self, files_list, num_max_vertices, num_data_dims, max_width, max_height, max_words_length, num_batch,
+    def __init__(self, files_list, num_max_vertices, num_data_dims, max_height, max_width, max_words_length, num_batch,
                  repeat=True, shuffle_size=None):
         self.files_list = files_list
         self.repeat = repeat
