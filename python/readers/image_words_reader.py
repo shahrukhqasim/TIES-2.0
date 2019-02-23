@@ -54,4 +54,4 @@ class ImageWordsReader:
         iterator = dataset.make_one_shot_iterator()
         vertex_features, _, image , global_features, adj_cells, adj_rows_adj_cols = iterator.get_next()
 
-        return vertex_features, image , global_features, adj_cells, adj_rows_adj_cols
+        return vertex_features, image , global_features, adj_cells, adj_rows_adj_cols, adj_rows_adj_cols
