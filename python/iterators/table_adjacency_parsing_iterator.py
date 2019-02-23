@@ -5,6 +5,7 @@ from libs.configuration_manager import ConfigurationManager as gconfig
 from models.model_interface import ModelInterface
 import subprocess
 import os
+from models.model_factory import ModelFactory
 
 
 class TableAdjacencyParsingIterator (Iterator):
@@ -16,6 +17,7 @@ class TableAdjacencyParsingIterator (Iterator):
         self.validate_after = gconfig.get_config_param("validate_after", type="int")
         self.save_after_iterations = gconfig.get_config_param("save_after_iterations", type="int")
         self.test_out_path = gconfig.get_config_param("test_out_path", type="str")
+        self.model = None
 
 
     def clean_summary_dir(self):
@@ -28,11 +30,15 @@ class TableAdjacencyParsingIterator (Iterator):
             except Exception as e:
                 print(e)
 
+    def initialize_train(self):
+        model_factory = ModelFactory()
+        self.model = model_factory.get_model()
+
     @overrides
     def train(self):
+        self.initialize_train()
         init = [tf.global_variables_initializer(), tf.local_variables_initializer()]
-
-        model  = ModelInterface()
+        model = self.model
         saver = model.get_saver()
 
         if self.from_scratch:
@@ -58,38 +64,23 @@ class TableAdjacencyParsingIterator (Iterator):
 
             print("Starting iterations")
             while iteration_number < self.train_for_iterations:
-                feed_dict = model.get_feed_dict(iteration_number)
-                fetches = model.get_fetches(iteration_number)
-
-                result = sess.run(fetches, feed_dict=feed_dict)
-                eval_summary = model.post_fetch(result, iteration_number=iteration_number)
+                model.run_training_iteration(sess, summary_writer, iteration_number)
 
                 if iteration_number % self.validate_after == 0:
-                    feed_dict = model.get_feed_dict_validation(iteration_number)
-                    fetches = model.get_fetches_validation(iteration_number)
-
-                    result = sess.run(fetches, feed_dict=feed_dict)
-                    eval_summary_validation = model.post_fetch_validation(result, iteration_number=iteration_number)
-                    summary_writer.add_summary(eval_summary_validation, iteration_number)
+                    model.run_training_iteration(sess, summary_writer, iteration_number)
 
                 iteration_number += 1
-                summary_writer.add_summary(eval_summary, iteration_number)
                 if iteration_number % self.save_after_iterations == 0:
                     print("\n\nINFO: Saving model\n\n")
                     saver.save(sess, self.model_path)
                     with open(self.model_path + '.txt', 'w') as f:
                         f.write(str(iteration_number))
 
-
-
             # Stop the threads
             coord.request_stop()
 
             # Wait for threads to stop
             coord.join(threads)
-
-
-        return super(TableAdjacencyParsingIterator, self).train()
 
     @overrides
     def test(self):
