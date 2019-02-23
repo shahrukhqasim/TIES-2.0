@@ -240,3 +240,16 @@ class BasicModel(ModelInterface):
         loss = sess.run([self.loss], feed_dict = feed_dict)
         print("Iteration %d - Loss %.4E", iteration_number, loss)
 
+    @overrides
+    def run_testing_iteration(self, sess, summary_writer, iteration_number):
+        feeds = sess.run(self.validation_feeds)
+        feed_dict = {
+            self._placeholder_vertex_features : feeds[0],
+            self._placeholder_image : feeds[1],
+            self._placeholder_global_features : feeds[2],
+            self._placeholder_cell_adj_matrix : feeds[3],
+            self._placeholder_row_adj_matrix : feeds[4],
+            self._placeholder_col_adj_matrix : feeds[5],
+        }
+        loss = sess.run([self.loss], feed_dict = feed_dict)
+        print("Iteration %d - Loss %.4E", iteration_number, loss)

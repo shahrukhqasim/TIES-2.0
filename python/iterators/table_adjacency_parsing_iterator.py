@@ -30,13 +30,13 @@ class TableAdjacencyParsingIterator (Iterator):
             except Exception as e:
                 print(e)
 
-    def initialize_train(self):
+    def initialize(self):
         model_factory = ModelFactory()
         self.model = model_factory.get_model()
 
     @overrides
     def train(self):
-        self.initialize_train()
+        self.initialize()
         init = [tf.global_variables_initializer(), tf.local_variables_initializer()]
         model = self.model
         model.initialize(training=True)
@@ -85,8 +85,33 @@ class TableAdjacencyParsingIterator (Iterator):
 
     @overrides
     def test(self):
-        return super(TableAdjacencyParsingIterator, self).test()
+        self.initialize()
+        init = [tf.global_variables_initializer(), tf.local_variables_initializer()]
+        model = self.model
+        model.initialize(training=True)
+        saver = model.get_saver()
 
+        with tf.Session() as sess:
+            sess.run(init)
+            coord = tf.train.Coordinator()
+            threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+            summary_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
+
+            saver.restore(sess, self.model_path)
+            print("\n\nINFO: Loading model\n\n")
+            iteration_number = 0
+
+            print("Starting iterations")
+            while iteration_number < self.train_for_iterations:
+                model.run_testing_iteration(sess, summary_writer, iteration_number)
+
+                iteration_number += 1
+
+            # Stop the threads
+            coord.request_stop()
+
+            # Wait for threads to stop
+            coord.join(threads)
     @overrides
     def profile(self):
         return super(TableAdjacencyParsingIterator, self).profile()
