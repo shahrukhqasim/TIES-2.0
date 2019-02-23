@@ -134,13 +134,13 @@ class BasicModel(ModelInterface):
         x = tf.distributions.Categorical(probs=self._get_distribution_for_mote_carlo_sampling()).sample(sample_shape=self.samples_per_vertex)
         x = tf.transpose(x, perm=[1,2,0]) # [batch, max_vertices, samples_per_vertex]
 
-        y = tf.range(0, self.num_batch)[...,tf.newaxis]
-        y = tf.tile(y, multiples=[1, self.max_vertices])
+        y = tf.range(0, self.num_batch)[...,tf.newaxis] # [batch, 1]
+        y = tf.tile(y, multiples=[1, self.max_vertices]) # [batch, max_vertices]
         z = tf.range(0, self.max_vertices)[tf.newaxis, ..., tf.newaxis]
         z = tf.tile(z, multiples=[self.num_batch, 1, 1])
         indexing_tensor_for_adj_matrices = tf.concat((y[..., tf.newaxis],z,x), axis=-1)
-        # TODO: This is not correct, fix it!
-        indexing_tensor = tf.concat((y,x), axis=-1)
+
+        indexing_tensor = tf.concat((y[..., tf.newaxis],x), axis=-1)
 
         x = tf.gather_nd(graph, indexing_tensor) # [ batch, num_vertices, samples_per_vertex, features]
         y = tf.expand_dims(graph, axis=2)
@@ -165,9 +165,9 @@ class BasicModel(ModelInterface):
         z = tf.layers.dense(x, units=2, activation=tf.nn.relu)
 
         mask = tf.sequence_mask(self._placeholder_global_features[:, self.dim_num_vertices], maxlen=self.max_vertices)[..., tf.newaxis]
-        loss_x = tf.nn.softmax_cross_entropy_with_logits_v2(labels=truths[0], logits=x) * mask
-        loss_y = tf.nn.softmax_cross_entropy_with_logits_v2(labels=truths[0], logits=y) * mask
-        loss_z = tf.nn.softmax_cross_entropy_with_logits_v2(labels=truths[0], logits=z) * mask
+        loss_x = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[0]), logits=x) * mask
+        loss_y = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[1]), logits=y) * mask
+        loss_z = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[2]), logits=z) * mask
 
         total_loss = loss_x + loss_y + loss_z # [batch, max_vertices, samples_per_vertex]
         total_loss = tf.reduce_mean(total_loss, axis=-1)
