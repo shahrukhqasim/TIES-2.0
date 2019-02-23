@@ -29,6 +29,23 @@ class ConfigurationManager:
             return_value = float(config_manager_instance.config[key])
         elif type=="int":
             return_value = int(config_manager_instance.config[key])
+        elif type=="bool":
+            return_value = False
+            if config_manager_instance.config[key] == "true":
+                return_value = True
+            elif config_manager_instance.config[key] == "True":
+                return_value = True
+            elif config_manager_instance.config[key] == "1":
+                return_value = True
+            elif config_manager_instance.config[key] == "0":
+                return_value = False
+            elif config_manager_instance.config[key] == "false":
+                return_value = False
+            elif config_manager_instance.config[key] == "False":
+                return_value = False
+            else:
+                raise ValueError("Unknown bool format")
+
         else:
             raise Exception("Unknown config type")
 

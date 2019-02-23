@@ -7,8 +7,8 @@ from readers.image_words_reader import ImageWordsReader
 
 
 class BasicModel(ModelInterface):
+    @overrides
     def initialize(self, training=True):
-        self._make_model()
         self.max_vertices = gconfig.get_config_param("max_vertices", "int")
         self.num_vertex_features = gconfig.get_config_param("num_vertex_features", "int")
         self.image_height = gconfig.get_config_param("image_height", "int")
@@ -44,6 +44,8 @@ class BasicModel(ModelInterface):
                                                     self.image_height, self.image_width, self.max_words_len, self.num_batch)
             self.testing_feeds = self.testing_reader.get_feeds()
 
+        self._make_model()
+
 
 
     def get_variable_scope(self):
@@ -57,13 +59,13 @@ class BasicModel(ModelInterface):
                                                                             self.num_vertex_features])
         self._placeholder_global_features = tf.placeholder(dtype=tf.float32, shape=[self.num_batch,
                                                                                     self.num_global_features])
-        self._placeholder_cell_adj_matrix = tf.placeholder(dtype=tf.float32, shape=[self.num_batch,
+        self._placeholder_cell_adj_matrix = tf.placeholder(dtype=tf.int64, shape=[self.num_batch,
                                                                                     self.max_vertices,
                                                                                     self.max_vertices])
-        self._placeholder_row_adj_matrix = tf.placeholder(dtype=tf.float32, shape=[self.num_batch,
+        self._placeholder_row_adj_matrix = tf.placeholder(dtype=tf.int64, shape=[self.num_batch,
                                                                                     self.max_vertices,
                                                                                     self.max_vertices])
-        self._placeholder_col_adj_matrix = tf.placeholder(dtype=tf.float32, shape=[self.num_batch,
+        self._placeholder_col_adj_matrix = tf.placeholder(dtype=tf.int64, shape=[self.num_batch,
                                                                                     self.max_vertices,
                                                                                     self.max_vertices])
 
@@ -77,6 +79,8 @@ class BasicModel(ModelInterface):
         _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
 
         _, self.post_height, self.post_width, _ = _graph_from_image.shape
+        self.post_height = int(self.post_height)
+        self.post_width = int(self.post_width)
         self._image_features = _graph_from_image
 
     # TODO: Move it to layers or something
@@ -98,10 +102,11 @@ class BasicModel(ModelInterface):
         vertices_height = tf.cast(vertices_height, tf.float32) * scale_y
         vertices_width = tf.cast(vertices_width, tf.float32) * scale_x
 
-        batch_range = tf.range(0, self.num_batch)[..., tf.newaxis, tf.newaxis]
+        batch_range = tf.range(0, self.num_batch, dtype=tf.float32)[..., tf.newaxis, tf.newaxis]
+        batch_range =  tf.tile(batch_range, multiples=[1, self.max_vertices, 1])
 
         indexing_tensor = tf.concat((batch_range, (vertices_y + vertices_height/2)[..., tf.newaxis], (vertices_x + vertices_width/2)[..., tf.newaxis]), axis=-1)
-        indexing_tensor = tf.cast(indexing_tensor, tf.float32)
+        indexing_tensor = tf.cast(indexing_tensor, tf.int64)
         return tf.gather_nd(image, indexing_tensor)
 
     def _make_the_graph_model(self, vertices_combined_features):
@@ -136,14 +141,21 @@ class BasicModel(ModelInterface):
 
         y = tf.range(0, self.num_batch)[...,tf.newaxis] # [batch, 1]
         y = tf.tile(y, multiples=[1, self.max_vertices]) # [batch, max_vertices]
+
         z = tf.range(0, self.max_vertices)[tf.newaxis, ..., tf.newaxis]
         z = tf.tile(z, multiples=[self.num_batch, 1, 1])
-        indexing_tensor_for_adj_matrices = tf.concat((y[..., tf.newaxis],z,x), axis=-1)
 
-        indexing_tensor = tf.concat((y[..., tf.newaxis],x), axis=-1)
+        batch_range_1 = tf.tile(y[..., tf.newaxis], multiples=[1, 1, self.samples_per_vertex])
+        max_vertices_range_1 = tf.tile(z, multiples=[1, 1, self.samples_per_vertex])
+
+        indexing_tensor_for_adj_matrices = tf.concat((batch_range_1[..., tf.newaxis],max_vertices_range_1[..., tf.newaxis],x[..., tf.newaxis]), axis=-1)
+        indexing_tensor = tf.concat((batch_range_1[..., tf.newaxis], x[..., tf.newaxis]), axis=-1)
 
         x = tf.gather_nd(graph, indexing_tensor) # [ batch, num_vertices, samples_per_vertex, features]
+
         y = tf.expand_dims(graph, axis=2)
+        y = tf.tile(y, multiples=[1, 1, self.samples_per_vertex, 1])
+
         x = tf.concat((x,y), axis=-1)
 
         truncated_matrices = []
@@ -165,9 +177,10 @@ class BasicModel(ModelInterface):
         z = tf.layers.dense(x, units=2, activation=tf.nn.relu)
 
         mask = tf.sequence_mask(self._placeholder_global_features[:, self.dim_num_vertices], maxlen=self.max_vertices)[..., tf.newaxis]
-        loss_x = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[0]), logits=x) * mask
-        loss_y = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[1]), logits=y) * mask
-        loss_z = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[2]), logits=z) * mask
+        mask = tf.cast(mask, dtype=tf.float32)
+        loss_x = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[0], depth=2), logits=x) * mask
+        loss_y = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[1], depth=2), logits=y) * mask
+        loss_z = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[2], depth=2), logits=z) * mask
 
         total_loss = loss_x + loss_y + loss_z # [batch, max_vertices, samples_per_vertex]
         total_loss = tf.reduce_mean(total_loss, axis=-1)
@@ -175,22 +188,20 @@ class BasicModel(ModelInterface):
         total_loss = tf.reduce_mean(total_loss)
         self.loss = total_loss
 
-
     def _make_model(self):
         with tf.variable_scope(self.get_variable_scope()):
             self._make_placeholders()
             self._make_image_conv_net()
-            vertices_y = self._placeholder_vertex_features[:, self.dim_vertex_x_position]
-            vertices_x = self._placeholder_vertex_features[:, self.dim_vertex_y_position]
-            vertices_height = self._placeholder_vertex_features[:, self.dim_vertex_height]
-            vertices_width = self._placeholder_vertex_features[:, self.dim_vertex_width]
+            vertices_y = self._placeholder_vertex_features[:, :, self.dim_vertex_x_position]
+            vertices_x = self._placeholder_vertex_features[:, :, self.dim_vertex_y_position]
+            vertices_height = self._placeholder_vertex_features[:, :, self.dim_vertex_height]
+            vertices_width = self._placeholder_vertex_features[:, :, self.dim_vertex_width]
             scale_y = float(self.post_height) / float(self.image_height)
             scale_x = float(self.post_width) / float(self.image_width)
             gathered_image_features = self._gather_from_image_features(self._image_features, vertices_y, vertices_x,
                                                                        vertices_height, vertices_width, scale_y, scale_x)
             vertices_combined_features = tf.concat((self._placeholder_vertex_features, gathered_image_features), axis=-1)
             graph_features = self._make_the_graph_model(vertices_combined_features)
-            # Use graph features to do the actual classification
             classification_head = self._do_monte_carlo_sampling(graph_features, [self._placeholder_cell_adj_matrix, self._placeholder_row_adj_matrix, self._placeholder_col_adj_matrix])
             self._make_classification_model(classification_head)
 

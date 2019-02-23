@@ -39,6 +39,7 @@ class TableAdjacencyParsingIterator (Iterator):
         self.initialize_train()
         init = [tf.global_variables_initializer(), tf.local_variables_initializer()]
         model = self.model
+        model.initialize(training=True)
         saver = model.get_saver()
 
         if self.from_scratch:

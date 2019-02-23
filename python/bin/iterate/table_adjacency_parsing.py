@@ -3,7 +3,7 @@ from iterators.table_adjacency_parsing_iterator import TableAdjacencyParsingIter
 from libs.configuration_manager import ConfigurationManager as gconfig
 
 
-if __name__ != "main":
+if __name__ != "__main__":
     print("Execute as a python script. This is not an importable module.")
     exit(0)
 

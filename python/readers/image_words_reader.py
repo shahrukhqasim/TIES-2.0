@@ -9,7 +9,7 @@ class ImageWordsReader:
         self.num_max_vertices = num_max_vertices
         self.num_data_dims = num_data_dims
         self.num_batch = num_batch
-        self.shuffle_size = self.num_batch * 3 if self.shuffle_size is None else self.shuffle_size
+        self.shuffle_size = self.num_batch * 3 if shuffle_size is None else shuffle_size
         self.max_width = max_width
         self.max_height = max_height
         self.max_word_length = max_words_length
@@ -17,8 +17,8 @@ class ImageWordsReader:
     def _parse_function(self, example_proto):
         keys_to_features = {
             'vertex_features': tf.FixedLenFeature((self.num_max_vertices, self.num_data_dims), tf.float32),
-            'vertex_text': tf.FixedLenFeature((self.num_max_vertices, self.max_word_length), tf.uint8),
-            'image': tf.FixedLenFeature((self.max_height, self.max_width), tf.uint8),
+            'vertex_text': tf.FixedLenFeature((self.num_max_vertices, self.max_word_length), tf.int64),
+            'image': tf.FixedLenFeature((self.max_height, self.max_width), tf.float32),
             'global_features': tf.FixedLenFeature((self.max_height, self.max_width), tf.float32),
             'adjacency_matrix_cells': tf.FixedLenFeature((self.num_max_vertices, self.max_width), tf.int64),
             'adjacency_matrix_rows': tf.FixedLenFeature((self.num_max_vertices, self.num_max_vertices), tf.int64),
@@ -50,8 +50,8 @@ class ImageWordsReader:
             dataset = dataset.shuffle(
                 buffer_size=self.shuffle_size)
         dataset = dataset.repeat(None if self.repeat else 10000)
-        dataset = dataset.batch(self.num_batch)
+        # dataset = dataset.batch(self.num_batch)
         iterator = dataset.make_one_shot_iterator()
-        vertex_features, _, image , global_features, adj_cells, adj_rows_adj_cols = iterator.get_next()
+        vertex_features, _, image , global_features, adj_cells, adj_rows , adj_cols = iterator.get_next()
 
-        return vertex_features, image , global_features, adj_cells, adj_rows_adj_cols, adj_rows_adj_cols
+        return vertex_features, image , global_features, adj_cells, adj_rows, adj_cols
