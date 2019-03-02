@@ -6,6 +6,8 @@ from models.model_interface import ModelInterface
 import subprocess
 import os
 from models.model_factory import ModelFactory
+from tensorflow.contrib import tpu
+from tensorflow.contrib.cluster_resolver import TPUClusterResolver
 
 
 class TableAdjacencyParsingIterator (Iterator):
@@ -37,7 +39,7 @@ class TableAdjacencyParsingIterator (Iterator):
     @overrides
     def train(self):
         self.initialize()
-        init = [tf.global_variables_initializer(), tf.local_variables_initializer()]
+        # init = [tf.global_variables_initializer(), tf.local_variables_initializer()]
         model = self.model
         model.initialize(training=True)
         saver = model.get_saver()
@@ -49,8 +51,12 @@ class TableAdjacencyParsingIterator (Iterator):
         else:
             self.clean_summary_dir()
 
-        with tf.Session() as sess:
-            sess.run(init)
+        tpu_grpc_url = TPUClusterResolver(
+            tpu=[os.environ['TPU_NAME']]).get_master()
+
+        with tf.Session(tpu_grpc_url) as sess:
+            sess.run(tpu.initialize_system())
+            sess.run(tf.global_variables_initializer())
             coord = tf.train.Coordinator()
             threads = tf.train.start_queue_runners(sess=sess, coord=coord)
             summary_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
@@ -76,6 +82,8 @@ class TableAdjacencyParsingIterator (Iterator):
                     saver.save(sess, self.model_path)
                     with open(self.model_path + '.txt', 'w') as f:
                         f.write(str(iteration_number))
+
+            sess.run(tpu.shutdown_system())
 
             # Stop the threads
             coord.request_stop()
