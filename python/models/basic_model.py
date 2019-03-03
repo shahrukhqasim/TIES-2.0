@@ -20,8 +20,8 @@ class BasicModel(ModelInterface):
         self.image_channels = gconfig.get_config_param("image_channels", "int")
         self.dim_vertex_x_position = gconfig.get_config_param("dim_vertex_x_position", "int")
         self.dim_vertex_y_position = gconfig.get_config_param("dim_vertex_y_position", "int")
-        self.dim_vertex_width = gconfig.get_config_param("dim_vertex_width", "int")
-        self.dim_vertex_height = gconfig.get_config_param("dim_vertex_height", "int")
+        self.dim_vertex_x2_position = gconfig.get_config_param("dim_vertex_x2_position", "int")
+        self.dim_vertex_y2_position = gconfig.get_config_param("dim_vertex_y2_position", "int")
 
         self.dim_num_vertices = gconfig.get_config_param("dim_num_vertices", "int")
         self.samples_per_vertex = gconfig.get_config_param("samples_per_vertex", "int")
@@ -52,7 +52,7 @@ class BasicModel(ModelInterface):
                                                       self.max_words_len, self.num_batch)
             self.testing_feeds = self.testing_reader.get_feeds()
 
-        self._make_tpu_graphs()
+        self._make_computation_graphs()
 
 
 
@@ -61,7 +61,7 @@ class BasicModel(ModelInterface):
 
 
     @staticmethod
-    def _make_placeholders(feeds):
+    def _make_placeholders():
         _placeholder_image = feeds[1]
         _placeholder_vertex_features = feeds[0]
         _placeholder_global_features = feeds[2]
@@ -81,6 +81,7 @@ class BasicModel(ModelInterface):
     @staticmethod
     def _make_image_conv_net(image):
         _graph_from_image = image
+        _graph_from_image = tf.image.resize_images(_graph_from_image, size=(256,256))
         _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
         _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
         _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
@@ -92,7 +93,7 @@ class BasicModel(ModelInterface):
 
     # TODO: Move it to layers or something
     @staticmethod
-    def _gather_from_image_features(image, vertices_y, vertices_x, vertices_height, vertices_width, scale_y, scale_x):
+    def _gather_from_image_features(image, vertices_y, vertices_x, vertices_y2, vertices_x2, scale_y, scale_x):
         """
         Gather features from a 2D image.
 
@@ -107,13 +108,13 @@ class BasicModel(ModelInterface):
         """
         vertices_y = tf.cast(vertices_y, tf.float32) * scale_y
         vertices_x = tf.cast(vertices_x, tf.float32) * scale_x
-        vertices_height = tf.cast(vertices_height, tf.float32) * scale_y
-        vertices_width = tf.cast(vertices_width, tf.float32) * scale_x
+        vertices_y2 = tf.cast(vertices_y2, tf.float32) * scale_y
+        vertices_x2 = tf.cast(vertices_x2, tf.float32) * scale_x
 
         batch_range = tf.range(0, gconfig.get_config_param("batch_size", "int"), dtype=tf.float32)[..., tf.newaxis, tf.newaxis]
         batch_range =  tf.tile(batch_range, multiples=[1, gconfig.get_config_param("max_vertices", "int"), 1])
 
-        indexing_tensor = tf.concat((batch_range, (vertices_y + vertices_height/2)[..., tf.newaxis], (vertices_x + vertices_width/2)[..., tf.newaxis]), axis=-1)
+        indexing_tensor = tf.concat((batch_range, ((vertices_y + vertices_y2)/2)[..., tf.newaxis], ((vertices_x + vertices_x2)/2)[..., tf.newaxis]), axis=-1)
         indexing_tensor = tf.cast(indexing_tensor, tf.int64)
         return tf.gather_nd(image, indexing_tensor)
 
@@ -138,17 +139,16 @@ class BasicModel(ModelInterface):
 
     @staticmethod
     def _get_distribution_for_mote_carlo_sampling(self, placeholders):
-        x = tf.ones(shape=(self.num_batch, self.max_vertices, self.max_vertices), dtype=tf.float32)
-        x = x / placeholders['placeholder_global_features'][:, self.dim_num_vertices][..., tf.newaxis, tf.newaxis]
-        mask = tf.sequence_mask(placeholders['placeholder_global_features'][:, self.dim_num_vertices], maxlen=self.max_vertices)\
-                            [..., tf.newaxis] # [batch, num_vertices, 1] It will broadcast on the last dimension!
+        x = tf.ones(shape=(self.num_batch, self.max_vertices), dtype=tf.float32)
+        x = x / placeholders['placeholder_global_features'][:, self.dim_num_vertices][..., tf.newaxis]
+        mask = tf.sequence_mask(placeholders['placeholder_global_features'][:, self.dim_num_vertices], maxlen=self.max_vertices) # [batch, num_vertices, 1] It will broadcast on the last dimension!
 
         return x * tf.cast(mask, tf.float32)
 
     @staticmethod
     def _do_monte_carlo_sampling(self, graph, gt_matrices):
-        x = tf.distributions.Categorical(probs=BasicModel._get_distribution_for_mote_carlo_sampling(self, self.placeholders)).sample(sample_shape=self.samples_per_vertex)
-        x = tf.transpose(x, perm=[1,2,0]) # [batch, max_vertices, samples_per_vertex]
+        x = tf.distributions.Categorical(probs=BasicModel._get_distribution_for_mote_carlo_sampling(self, self.placeholders)).sample(sample_shape=(self.max_vertices,self.samples_per_vertex))
+        x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
 
         y = tf.range(0, self.num_batch)[...,tf.newaxis] # [batch, 1]
         y = tf.tile(y, multiples=[1, self.max_vertices]) # [batch, max_vertices]
@@ -198,24 +198,21 @@ class BasicModel(ModelInterface):
         total_loss = tf.reduce_mean(total_loss, axis=-1)
         total_loss = tf.reduce_sum(total_loss) / tf.cast(self.placeholders['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
         total_loss = tf.reduce_mean(total_loss)
-        self.loss = total_loss
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(self.loss)
-        return [self.loss, self.optimizer]
+        loss = total_loss
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(loss)
+        return loss, optimizer
 
-    @staticmethod
-    def _make_model(arguments):
-        feeds = arguments[:-1]
-        self = arguments[-1]
 
-        placeholders = BasicModel._make_placeholders(feeds)
+    def _make_model(self):
+        placeholders = self._make_placeholders()
         self.placeholders = placeholders
         _, image_height, image_width, _ = placeholders['placeholder_image'].shape
         conv_head = BasicModel._make_image_conv_net(placeholders['placeholder_image'])
 
         vertices_y = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_y_position", "int")]
         vertices_x = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_x_position", "int")]
-        vertices_height = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_height", "int")]
-        vertices_width = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_width", "int")]
+        vertices_y2 = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_y2_position", "int")]
+        vertices_x2 = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_x2_position", "int")]
 
         _, post_height, post_width, _ = conv_head.shape
         post_height, post_width, image_height, image_width =  float(post_height.value), float(post_width.value),\
@@ -224,7 +221,7 @@ class BasicModel(ModelInterface):
         scale_y = float(post_height) / float(image_height)
         scale_x = float(post_width) / float(image_width)
         gathered_image_features = BasicModel._gather_from_image_features(conv_head, vertices_y, vertices_x,
-                                                                   vertices_height, vertices_width, scale_y, scale_x)
+                                                                         vertices_y2, vertices_x2, scale_y, scale_x)
         vertices_combined_features = tf.concat((placeholders['placeholder_vertex_features'], gathered_image_features), axis=-1)
         graph_features = BasicModel._make_the_graph_model(vertices_combined_features)
 
@@ -232,19 +229,22 @@ class BasicModel(ModelInterface):
                                                                   [placeholders['placeholder_row_adj_matrix'],
                                                                    placeholders['placeholder_row_adj_matrix'],
                                                                    placeholders['placeholder_row_adj_matrix']])
-        return BasicModel._make_classification_model(self, classification_head)
+        loss, optimizer = BasicModel._make_classification_model(self, classification_head)
+        return loss, optimizer
 
 
-    def _make_tpu_graphs(self):
+    def _make_computation_graphs(self):
 
         # Only for testing:
         with tf.variable_scope(self.get_variable_scope()):
-            x = list(self.training_feeds)
-            x.append(self)
-            self.tpu_graphs = BasicModel._make_model(x)
+            self.loss,_ = self._make_model()
 
+        # v = list(self.training_feeds)
+        #
+        # BasicModel.vvv = self
         # with tf.variable_scope(self.get_variable_scope()):
-        #     self.tpu_graphs = tpu.rewrite(BasicModel._make_model, inputs=[self.training_feeds], infeed_queue=self)
+        #     self.loss = tpu.rewrite(computation=BasicModel._make_model, inputs=v)
+        #     # print("TPU graphs length", len(self.tpu_graphs))
 
         self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.get_variable_scope()))
 
@@ -254,8 +254,8 @@ class BasicModel(ModelInterface):
 
     @overrides
     def run_training_iteration(self, sess, summary_writer, iteration_number):
-        loss, _ = sess.run(self.tpu_graphs)
-        print("Iteration %d - Loss %.4E", iteration_number, loss)
+        loss = sess.run(self.loss)
+        print("Iteration %d - Loss %.4E" , (iteration_number, loss))
 
     @overrides
     def run_validation_iteration(self, sess, summary_writer, iteration_number):
