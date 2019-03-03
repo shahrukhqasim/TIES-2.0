@@ -19,6 +19,7 @@ class TableAdjacencyParsingIterator (Iterator):
         self.validate_after = gconfig.get_config_param("validate_after", type="int")
         self.save_after_iterations = gconfig.get_config_param("save_after_iterations", type="int")
         self.test_out_path = gconfig.get_config_param("test_out_path", type="str")
+        self.visual_feedback_out_path = gconfig.get_config_param("visual_feedback_out_path", type="str")
         self.model = None
 
 
@@ -48,6 +49,8 @@ class TableAdjacencyParsingIterator (Iterator):
             subprocess.call("mkdir -p %s"%(self.summary_path), shell=True)
             subprocess.call("mkdir -p %s"%(self.test_out_path), shell=True)
             subprocess.call("mkdir -p %s"%(os.path.join(self.test_out_path, 'ops')), shell=True)
+            subprocess.call("mkdir -p %s" % (self.visual_feedback_out_path), shell=True)
+
         else:
             self.clean_summary_dir()
 
@@ -59,7 +62,7 @@ class TableAdjacencyParsingIterator (Iterator):
             sess.run(tf.global_variables_initializer())
             coord = tf.train.Coordinator()
             threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-            # summary_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
+            summary_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
 
             if not self.from_scratch:
                 saver.restore(sess, self.model_path)
@@ -69,12 +72,14 @@ class TableAdjacencyParsingIterator (Iterator):
             else:
                 iteration_number = 0
 
+            model.sanity_preplot(sess, summary_writer)
+
             print("Starting iterations")
             while iteration_number < self.train_for_iterations:
-                model.run_training_iteration(sess, None, iteration_number)
+                model.run_training_iteration(sess, summary_writer, iteration_number)
 
                 if iteration_number % self.validate_after == 0:
-                    model.run_validation_iteration(sess, None, iteration_number)
+                    model.run_validation_iteration(sess, summary_writer, iteration_number)
 
                 iteration_number += 1
                 if iteration_number % self.save_after_iterations == 0:
@@ -120,6 +125,7 @@ class TableAdjacencyParsingIterator (Iterator):
 
             # Wait for threads to stop
             coord.join(threads)
+
     @overrides
     def profile(self):
         return super(TableAdjacencyParsingIterator, self).profile()

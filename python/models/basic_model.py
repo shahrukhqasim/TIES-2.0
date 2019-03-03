@@ -4,8 +4,12 @@ from libs.configuration_manager import ConfigurationManager as gconfig
 import tensorflow as tf
 from caloGraphNN import layer_GravNet, layer_global_exchange, layer_GarNet, high_dim_dense
 from readers.image_words_reader import ImageWordsReader
-from tensorflow.contrib import tpu
 from ops.ties import *
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import os
 
 
 class BasicModel(ModelInterface):
@@ -31,6 +35,9 @@ class BasicModel(ModelInterface):
         self.validation_files_list = gconfig.get_config_param("test_files_list", "str")
         self.test_files_list = gconfig.get_config_param("validation_files_list", "str")
         self.learning_rate = gconfig.get_config_param("learning_rate", "float")
+
+        self.visual_feedback_out_path = gconfig.get_config_param("visual_feedback_out_path", type="str")
+
 
         self.training = training
         self.momentum = 0.6
@@ -245,7 +252,6 @@ class BasicModel(ModelInterface):
 
     @overrides
     def run_validation_iteration(self, sess, summary_writer, iteration_number):
-
         feeds = sess.run(self.validation_feeds)
         feed_dict = {
             self._placeholder_vertex_features : feeds[0],
@@ -275,4 +281,34 @@ class BasicModel(ModelInterface):
 
         print("TESTING Iteration %d - Loss %.4E"  % (iteration_number, loss))
         print("Unimplemented warning: Inference result not being saved")
+
+
+    def sanity_preplot(self, sess, summary_writer):
+        feeds = sess.run(self.validation_feeds)
+        feeds = [x[0] for x in feeds]  # Pick the first back element
+        image = feeds[1]
+        vertex_features = feeds[0]
+        global_features = feeds[2]
+        cell_adj = feeds[3]
+        row_adj = feeds[4]
+        col_adj = feeds[5]
+        num_vertices = int(global_features[self.dim_num_vertices])
+
+        if self.image_channels==1:
+            image = image[:,:,0]
+
+        fig, ax = plt.subplots(1)
+        ax.imshow(image)
+
+        for i in range(num_vertices):
+            x = vertex_features[i, 0]
+            y = vertex_features[i, 1]
+            width = vertex_features[i, 2] - x
+            height = vertex_features[i, 3] - y
+            rect = patches.Rectangle((x, y), width, height, linewidth=1, edgecolor='r', facecolor='none')
+            ax.add_patch(rect)
+
+        plt.savefig(os.path.join(self.visual_feedback_out_path, 'sanity_boxes.png'))
+
+
 
