@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import os
 import cv2
+from models.conv_segment import BasicConvSegment
 
 
 class BasicModel(ModelInterface):
@@ -61,14 +62,16 @@ class BasicModel(ModelInterface):
                                                       self.max_words_len, self.num_batch)
             self.testing_feeds = self.testing_reader.get_feeds()
 
-        self._make_computation_graphs()
+        self.conv_segment = BasicConvSegment()
+
+        self.build_computation_graphs()
 
 
 
     def get_variable_scope(self):
         return self.variable_scope
 
-    def _make_placeholders(self):
+    def make_placeholders(self):
         _placeholder_image = tf.placeholder(dtype=tf.float32, shape=[self.num_batch, self.image_height,
                                                                           self.image_width, self.image_channels])
         _placeholder_vertex_features = tf.placeholder(dtype=tf.float32, shape=[self.num_batch, self.max_vertices,
@@ -101,20 +104,7 @@ class BasicModel(ModelInterface):
             "placeholder_col_adj_matrix" : _placeholder_col_adj_matrix,
         }
 
-    def _make_image_conv_net(self, image):
-        _graph_from_image = image
-        _graph_from_image = tf.image.resize_images(_graph_from_image, size=(256,256))
-        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
-        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
-        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
-        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
-        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
-        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
-
-        return _graph_from_image
-
-
-    def _make_the_graph_model(self, vertices_combined_features):
+    def build_graph_segment(self, vertices_combined_features):
         x = vertices_combined_features
         for i in range(8):
             x = layer_global_exchange(x)
@@ -132,15 +122,15 @@ class BasicModel(ModelInterface):
         x = high_dim_dense(x, 128, activation=tf.nn.relu)
         return high_dim_dense(x, 32, activation=tf.nn.relu)
 
-    def _get_distribution_for_mote_carlo_sampling(self, placeholders):
+    def get_distribution_for_mote_carlo_sampling(self, placeholders):
         x = tf.ones(shape=(self.num_batch, self.max_vertices), dtype=tf.float32)
         x = x / placeholders['placeholder_global_features'][:, self.dim_num_vertices][..., tf.newaxis]
         mask = tf.sequence_mask(placeholders['placeholder_global_features'][:, self.dim_num_vertices], maxlen=self.max_vertices) # [batch, num_vertices, 1] It will broadcast on the last dimension!
 
         return x * tf.cast(mask, tf.float32)
 
-    def _do_monte_carlo_sampling(self, graph, gt_matrices):
-        x = tf.distributions.Categorical(probs=self._get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(self.max_vertices,self.samples_per_vertex))
+    def do_monte_carlo_sampling(self, graph, gt_matrices):
+        x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(self.max_vertices, self.samples_per_vertex))
         x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
 
         y = tf.range(0, self.num_batch)[...,tf.newaxis] # [batch, 1]
@@ -168,14 +158,14 @@ class BasicModel(ModelInterface):
 
         return x, truncated_matrices
 
-    def _accuracy_function(self, x):
+    def reduce_mean_variable_vertices(self, x):
         x = tf.reduce_mean(x, axis=-1)
         x = tf.reduce_sum(x, axis=-1) / tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
         x = tf.reduce_mean(x)
 
         return x
 
-    def _make_classification_model(self, classification_head):
+    def build_classification_model(self, classification_head):
         graph, truths = classification_head
 
         x = graph
@@ -197,9 +187,9 @@ class BasicModel(ModelInterface):
         accuracy_y = tf.cast(tf.equal(tf.argmax(y, axis=-1), truths[1]), tf.float32) * mask
         accuracy_z = tf.cast(tf.equal(tf.argmax(z, axis=-1), truths[2]), tf.float32) * mask
 
-        self.accuracy_x = self._accuracy_function(accuracy_x)
-        self.accuracy_y = self._accuracy_function(accuracy_y)
-        self.accuracy_z = self._accuracy_function(accuracy_z)
+        self.accuracy_x = self.reduce_mean_variable_vertices(accuracy_x)
+        self.accuracy_y = self.reduce_mean_variable_vertices(accuracy_y)
+        self.accuracy_z = self.reduce_mean_variable_vertices(accuracy_z)
 
         total_loss = loss_x + loss_y + loss_z # [batch, max_vertices, samples_per_vertex]
         total_loss = tf.reduce_mean(total_loss, axis=-1)
@@ -211,11 +201,11 @@ class BasicModel(ModelInterface):
 
 
     def _make_model(self):
-        self._make_placeholders()
+        self.make_placeholders()
         placeholders = self.placeholders_dict
 
         _, image_height, image_width, _ = placeholders['placeholder_image'].shape
-        conv_head = self._make_image_conv_net(placeholders['placeholder_image'])
+        conv_head = self.conv_segment.build_network_segment(placeholders['placeholder_image'])
 
         vertices_y = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_y_position", "int")]
         vertices_x = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_x_position", "int")]
@@ -231,18 +221,49 @@ class BasicModel(ModelInterface):
         gathered_image_features = gather_features_from_conv_head(conv_head, vertices_y, vertices_x,
                                                                          vertices_y2, vertices_x2, scale_y, scale_x)
         vertices_combined_features = tf.concat((placeholders['placeholder_vertex_features'], gathered_image_features), axis=-1)
-        graph_features = self._make_the_graph_model(vertices_combined_features)
+        graph_features = self.build_graph_segment(vertices_combined_features)
 
-        classification_head = self._do_monte_carlo_sampling(graph_features,
-                                                                  [placeholders['placeholder_row_adj_matrix'],
+        classification_head = self.do_monte_carlo_sampling(graph_features,
+                                                           [placeholders['placeholder_row_adj_matrix'],
                                                                    placeholders['placeholder_row_adj_matrix'],
                                                                    placeholders['placeholder_row_adj_matrix']])
-        loss, optimizer = self._make_classification_model(classification_head)
+        loss, optimizer = self.build_classification_model(classification_head)
         return loss, optimizer
 
-    def _make_computation_graphs(self):
+    def build_computation_graphs(self):
         with tf.variable_scope(self.get_variable_scope()):
-            self.loss, self.optimizer = self._make_model()
+            self.make_placeholders()
+            placeholders = self.placeholders_dict
+
+            _, image_height, image_width, _ = placeholders['placeholder_image'].shape
+            conv_head = self.conv_segment.build_network_segment(placeholders['placeholder_image'])
+
+            vertices_y = placeholders['placeholder_vertex_features'][:, :,
+                         gconfig.get_config_param("dim_vertex_y_position", "int")]
+            vertices_x = placeholders['placeholder_vertex_features'][:, :,
+                         gconfig.get_config_param("dim_vertex_x_position", "int")]
+            vertices_y2 = placeholders['placeholder_vertex_features'][:, :,
+                          gconfig.get_config_param("dim_vertex_y2_position", "int")]
+            vertices_x2 = placeholders['placeholder_vertex_features'][:, :,
+                          gconfig.get_config_param("dim_vertex_x2_position", "int")]
+
+            _, post_height, post_width, _ = conv_head.shape
+            post_height, post_width, image_height, image_width = float(post_height.value), float(post_width.value), \
+                                                                 float(image_height.value), float(image_width.value)
+
+            scale_y = float(post_height) / float(image_height)
+            scale_x = float(post_width) / float(image_width)
+            gathered_image_features = gather_features_from_conv_head(conv_head, vertices_y, vertices_x,
+                                                                     vertices_y2, vertices_x2, scale_y, scale_x)
+            vertices_combined_features = tf.concat(
+                (placeholders['placeholder_vertex_features'], gathered_image_features), axis=-1)
+            graph_features = self.build_graph_segment(vertices_combined_features)
+
+            classification_head = self.do_monte_carlo_sampling(graph_features,
+                                                               [placeholders['placeholder_row_adj_matrix'],
+                                                                placeholders['placeholder_row_adj_matrix'],
+                                                                placeholders['placeholder_row_adj_matrix']])
+            self.loss, self.optimizer = self.build_classification_model(classification_head)
 
         self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.get_variable_scope()))
 
@@ -296,7 +317,6 @@ class BasicModel(ModelInterface):
 
         print("TESTING Iteration %d - Loss %.4E"  % (iteration_number, loss))
         print("Unimplemented warning: Inference result not being saved")
-
 
     def sanity_preplot(self, sess, summary_writer):
         feeds = sess.run(self.validation_feeds)
