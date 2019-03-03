@@ -27,7 +27,7 @@ class ImageWordsReader:
             'adjacency_matrix_cells': tf.FixedLenFeature((self.num_max_vertices * self.num_max_vertices), tf.int64),
             'adjacency_matrix_rows': tf.FixedLenFeature((self.num_max_vertices * self.num_max_vertices), tf.int64),
             'adjacency_matrix_cols': tf.FixedLenFeature((self.num_max_vertices * self.num_max_vertices), tf.int64),
-            'vertex_text': tf.FixedLenFeature((self.max_word_length), tf.int64),
+            'vertex_text': tf.FixedLenFeature((self.num_max_vertices * self.max_word_length), tf.int64),
         }
         parsed_features = tf.parse_single_example(example_proto, keys_to_features)
 
@@ -64,9 +64,10 @@ class ImageWordsReader:
         dataset = dataset.repeat(None if self.repeat else 10000)
         dataset = dataset.batch(self.num_batch)
         iterator = dataset.make_one_shot_iterator()
-        vertex_features, _, image, global_features, adj_cells, adj_rows, adj_cols = iterator.get_next()
+        vertex_features, vertex_text, image, global_features, adj_cells, adj_rows, adj_cols = iterator.get_next()
 
         vertex_features = tf.reshape(vertex_features, shape=(-1, self.num_max_vertices, self.num_data_dims))
+        vertex_text = tf.reshape(vertex_text, shape=(self.num_max_vertices, self.max_word_length))
         image = tf.reshape(image, shape=(-1, self.max_height, self.max_width, self.num_image_channels))
 
         adj_cells = tf.reshape(adj_cells, shape=(-1, self.num_max_vertices, self.num_max_vertices))
