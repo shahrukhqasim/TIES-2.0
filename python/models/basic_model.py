@@ -10,6 +10,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import os
+import cv2
 
 
 class BasicModel(ModelInterface):
@@ -297,18 +298,20 @@ class BasicModel(ModelInterface):
         if self.image_channels==1:
             image = image[:,:,0]
 
-        fig, ax = plt.subplots(1)
-        ax.imshow(image, cmap='gray')
+        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
 
         for i in range(num_vertices):
             x = vertex_features[i, 0]
             y = vertex_features[i, 1]
-            width = vertex_features[i, 2] - x
-            height = vertex_features[i, 3] - y
-            rect = patches.Rectangle((x, y), width, height, linewidth=1, edgecolor='r', facecolor='none')
-            ax.add_patch(rect)
+            x2 = vertex_features[i, 2]
+            y2 = vertex_features[i, 3]
+
+            cv2.rectangle(image, (x,y), (x2, y2), color=(255,0,0))
+            # rect = patches.Rectangle((x, y), width, height, linewidth=1, edgecolor='r', facecolor='none')
+            # ax.add_patch(rect)
 
         plt.savefig(os.path.join(self.visual_feedback_out_path, 'sanity_boxes.png'))
+        cv2.imwrite(os.path.join(self.visual_feedback_out_path, 'sanity_boxes.png'), image)
 
 
 
