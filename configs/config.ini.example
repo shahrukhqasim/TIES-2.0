@@ -1,6 +1,6 @@
-[basic_conv_graph]
+[basic_conv_graph_acer]
 from_scratch=1
-batch_size=50
+batch_size=2
 save_after_iterations=300
 train_for_iterations=20000000000
 learning_rate=0.0002
@@ -8,15 +8,16 @@ validate_after=50
 num_testing_samples=20000
 reader_type=fixed_num_entries_reader_seeds_separate
 
-summary_path=/media/tpudrive/Output/tables_alpha/basic_model/summary
-model_path=/media/tpudrive/Output/tables_alpha/basic_model/model
-test_out_path=/media/tpudrive/Output/tables_alpha/basic_model/test
+summary_path=/home/srq/Workspace/TrainOut/dummy_alpha_1/summary
+model_path=/home/srq/Workspace/TrainOut/dummy_alpha_1/model
+test_out_path=/home/srq/Workspace/TrainOut/dummy_alpha_1/test
 
-training_files_list=/media/tpudrive/Datasets/test_alpha_files/train_files.txt
-validation_files_list=/media/tpudrive/Datasets/test_alpha_files/train_files.txt
-test_files_list=/media/tpudrive/Datasets/test_alpha_files/train_files.txt
+training_files_list=/home/srq/Datasets/dummy_sythetic_alpha/train_files.txt
+validation_files_list=/home/srq/Datasets/dummy_sythetic_alpha/train_files.txt
+test_files_list=/home/srq/Datasets/dummy_sythetic_alpha/train_files.txt
 model=basic_conv_graph
-profiler_output_file_name=/media/tpudrive/Output/tables_alpha/basic_model/profiler
+profiler_output_file_name=/home/srq/Workspace/TrainOut/dummy_alpha_1/profiler
+visual_feedback_out_path=/home/srq/Workspace/TrainOut/dummy_alpha_1/visual_feedback
 max_vertices=900
 num_vertex_features=4
 max_image_height=768
@@ -26,9 +27,9 @@ num_data_dims=3
 image_channels=1
 dim_vertex_x_position=0
 dim_vertex_y_position=1
-dim_vertex_width=2
-dim_vertex_height=3
+dim_vertex_x2_position=2
+dim_vertex_y2_position=3
 dim_num_vertices=0
-samples_per_vertex=4
+samples_per_vertex=6
 num_global_features=3
 variable_scope=basic_conv_graph_alpha_1

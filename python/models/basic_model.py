@@ -298,7 +298,7 @@ class BasicModel(ModelInterface):
             image = image[:,:,0]
 
         fig, ax = plt.subplots(1)
-        ax.imshow(image)
+        ax.imshow(image, cmap='gray')
 
         for i in range(num_vertices):
             x = vertex_features[i, 0]
