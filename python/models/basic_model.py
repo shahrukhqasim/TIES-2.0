@@ -168,6 +168,13 @@ class BasicModel(ModelInterface):
 
         return x, truncated_matrices
 
+    def _accuracy_function(self, x):
+        x = tf.reduce_mean(x, axis=-1)
+        x = tf.reduce_sum(x, axis=-1) / tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
+        x = tf.reduce_mean(x)
+
+        return x
+
     def _make_classification_model(self, classification_head):
         graph, truths = classification_head
 
@@ -186,6 +193,13 @@ class BasicModel(ModelInterface):
         loss_y = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[1], depth=2), logits=y) * mask
         loss_z = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[2], depth=2), logits=z) * mask
 
+        accuracy_x = tf.cast(tf.equal(tf.argmax(x, axis=-1), truths[0]), tf.float32) * mask
+        accuracy_y = tf.cast(tf.equal(tf.argmax(y, axis=-1), truths[1]), tf.float32) * mask
+        accuracy_z = tf.cast(tf.equal(tf.argmax(z, axis=-1), truths[2]), tf.float32) * mask
+
+        self.accuracy_x = self._accuracy_function(accuracy_x)
+        self.accuracy_y = self._accuracy_function(accuracy_y)
+        self.accuracy_z = self._accuracy_function(accuracy_z)
 
         total_loss = loss_x + loss_y + loss_z # [batch, max_vertices, samples_per_vertex]
         total_loss = tf.reduce_mean(total_loss, axis=-1)
@@ -247,9 +261,9 @@ class BasicModel(ModelInterface):
             self._placeholder_row_adj_matrix : feeds[4],
             self._placeholder_col_adj_matrix : feeds[5],
         }
-        loss,_ = sess.run([self.loss, self.optimizer], feed_dict = feed_dict)
+        loss,_, ax, ay, az = sess.run([self.loss, self.optimizer, self.accuracy_x, self.accuracy_y, self.accuracy_z], feed_dict = feed_dict)
 
-        print("Iteration %d - Loss %.4E"  % (iteration_number, loss))
+        print("Iteration %d - Loss %.4E %.3f %.3f %.3f" % (iteration_number, loss, ax, ay, az))
 
     @overrides
     def run_validation_iteration(self, sess, summary_writer, iteration_number):
