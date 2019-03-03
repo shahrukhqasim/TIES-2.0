@@ -7,7 +7,7 @@ import subprocess
 import os
 from models.model_factory import ModelFactory
 from tensorflow.contrib import tpu
-from tensorflow.contrib.cluster_resolver import TPUClusterResolver
+# from tensorflow.contrib.cluster_resolver import TPUClusterResolver
 
 
 class TableAdjacencyParsingIterator (Iterator):
@@ -51,15 +51,15 @@ class TableAdjacencyParsingIterator (Iterator):
         else:
             self.clean_summary_dir()
 
-        tpu_grpc_url = TPUClusterResolver(
-            tpu=[os.environ['TPU_NAME']]).get_master()
+        # tpu_grpc_url = TPUClusterResolver(
+        #     tpu=[os.environ['TPU_NAME']]).get_master()
 
-        with tf.Session(tpu_grpc_url) as sess:
-            sess.run(tpu.initialize_system())
+        with tf.Session() as sess:
+            # sess.run(tpu.initialize_system())
             sess.run(tf.global_variables_initializer())
             coord = tf.train.Coordinator()
             threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-            summary_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
+            # summary_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
 
             if not self.from_scratch:
                 saver.restore(sess, self.model_path)
@@ -71,10 +71,10 @@ class TableAdjacencyParsingIterator (Iterator):
 
             print("Starting iterations")
             while iteration_number < self.train_for_iterations:
-                model.run_training_iteration(sess, summary_writer, iteration_number)
+                model.run_training_iteration(sess, None, iteration_number)
 
                 if iteration_number % self.validate_after == 0:
-                    model.run_training_iteration(sess, summary_writer, iteration_number)
+                    model.run_validation_iteration(sess, None, iteration_number)
 
                 iteration_number += 1
                 if iteration_number % self.save_after_iterations == 0:
@@ -83,7 +83,7 @@ class TableAdjacencyParsingIterator (Iterator):
                     with open(self.model_path + '.txt', 'w') as f:
                         f.write(str(iteration_number))
 
-            sess.run(tpu.shutdown_system())
+            # sess.run(tpu.shutdown_system())
 
             # Stop the threads
             coord.request_stop()
