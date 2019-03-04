@@ -36,6 +36,7 @@ class BasicModel(ModelInterface):
 
         self.visual_feedback_out_path = gconfig.get_config_param("visual_feedback_out_path", type="str")
         self.test_output_path = gconfig.get_config_param("test_out_path", type="str")
+        self.tile_samples = True # False is not implemented
 
 
         self.training = training
@@ -131,8 +132,15 @@ class BasicModel(ModelInterface):
 
     def do_monte_carlo_sampling(self, graph, gt_matrices):
         if self.training:
-            x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(self.max_vertices, self.samples_per_vertex))
-            x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
+            if self.tile_samples:
+                x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(1, self.samples_per_vertex))
+                x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
+                x = tf.tile(x, multiples=[1, self.max_vertices, 1])
+            else:
+                x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(self.max_vertices, self.samples_per_vertex))
+                x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
+                print("Visual feedback not implemented for this method!")
+                assert False
         else:
             # TODO: Could be  made faster since the subsequent gather operations can be avoided now
             x = tf.tile(tf.range(0, self.max_vertices)[tf.newaxis, :, tf.newaxis], multiples=[self.num_batch, 1,
