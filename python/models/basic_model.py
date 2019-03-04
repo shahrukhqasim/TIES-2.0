@@ -9,6 +9,9 @@ import os
 import cv2
 from models.conv_segment import BasicConvSegment
 from libs.inference_output_streamer import InferenceOutputStreamer
+from libs.visual_feedback_generator import VisualFeedbackGenerator
+import random
+import numpy as np
 
 class BasicModel(ModelInterface):
     @overrides
@@ -53,6 +56,8 @@ class BasicModel(ModelInterface):
                                                       self.max_words_len, self.num_batch)
             self.training_feeds = self.training_reader.get_feeds()
             self.validation_feeds = self.validation_reader.get_feeds()
+            self.visual_feedback_generator = VisualFeedbackGenerator(self.visual_feedback_out_path)
+            self.visual_feedback_generator.start_thread()
         else:
             self.testing_reader = ImageWordsReader(self.validation_files_list, self.num_global_features,
                                                       self.max_vertices, self.num_vertex_features,
@@ -146,6 +151,8 @@ class BasicModel(ModelInterface):
             x = tf.tile(tf.range(0, self.max_vertices)[tf.newaxis, :, tf.newaxis], multiples=[self.num_batch, 1,
                                                                                               self.samples_per_vertex])
 
+        self.graph_sampled_indices = x
+
         y = tf.range(0, self.num_batch)[...,tf.newaxis] # [batch, 1]
         y = tf.tile(y, multiples=[1, self.max_vertices]) # [batch, max_vertices]
 
@@ -181,6 +188,7 @@ class BasicModel(ModelInterface):
     def build_classification_model(self, classification_head):
         graph, truths = classification_head
 
+
         x = graph
         x = tf.layers.dense(x, units=128, activation=tf.nn.relu)
         x = tf.layers.dense(x, units=128, activation=tf.nn.relu)
@@ -196,33 +204,43 @@ class BasicModel(ModelInterface):
         loss_y = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[1], depth=2), logits=y) * mask
         loss_z = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[2], depth=2), logits=z) * mask
 
-        accuracy_x = tf.cast(tf.equal(tf.argmax(x, axis=-1), truths[0]), tf.float32) * mask
-        accuracy_y = tf.cast(tf.equal(tf.argmax(y, axis=-1), truths[1]), tf.float32) * mask
-        accuracy_z = tf.cast(tf.equal(tf.argmax(z, axis=-1), truths[2]), tf.float32) * mask
+        self.predicted_cell_adj_matrix = tf.argmax(x, axis=-1)
+        self.predicted_rows_adj_matrix = tf.argmax(y, axis=-1)
+        self.predicted_cols_adj_matrix = tf.argmax(z, axis=-1)
+
+        accuracy_x = tf.cast(tf.equal(self.predicted_cell_adj_matrix, truths[0]), tf.float32) * mask
+        accuracy_y = tf.cast(tf.equal(self.predicted_rows_adj_matrix, truths[1]), tf.float32) * mask
+        accuracy_z = tf.cast(tf.equal(self.predicted_cols_adj_matrix, truths[2]), tf.float32) * mask
 
         self.accuracy_x = self.reduce_mean_variable_vertices(accuracy_x)
         self.accuracy_y = self.reduce_mean_variable_vertices(accuracy_y)
         self.accuracy_z = self.reduce_mean_variable_vertices(accuracy_z)
-        summary_stochastic_accuracy_x = tf.summary.scalar('stochastic_accuracy_x', self._graph_loss)
-        summary_stochastic_accuracy_y = tf.summary.scalar('stochastic_accuracy_y', self._graph_loss)
-        summary_stochastic_accuracy_z = tf.summary.scalar('stochastic_accuracy_z', self._graph_loss)
+        summary_stochastic_accuracy_x = tf.summary.scalar('validation_stochastic_accuracy_x', self.accuracy_x)
+        summary_stochastic_accuracy_y = tf.summary.scalar('validation_stochastic_accuracy_y', self.accuracy_y)
+        summary_stochastic_accuracy_z = tf.summary.scalar('validation_stochastic_accuracy_z', self.accuracy_z)
 
-        training_summary_stochastic_accuracy_x = tf.summary.scalar('training_stochastic_accuracy_x', self._graph_loss)
-        training_summary_stochastic_accuracy_y = tf.summary.scalar('training_stochastic_accuracy_y', self._graph_loss)
-        training_summary_stochastic_accuracy_z = tf.summary.scalar('training_stochastic_accuracy_z', self._graph_loss)
+        training_summary_stochastic_accuracy_x = tf.summary.scalar('training_stochastic_accuracy_x', self.accuracy_x)
+        training_summary_stochastic_accuracy_y = tf.summary.scalar('training_stochastic_accuracy_y', self.accuracy_y)
+        training_summary_stochastic_accuracy_z = tf.summary.scalar('training_stochastic_accuracy_z', self.accuracy_z)
 
-        self.summary_training = tf.summary.merge([training_summary_stochastic_accuracy_x,
-                                                  training_summary_stochastic_accuracy_y,
-                                                  training_summary_stochastic_accuracy_z])
-        self.summary_validation = tf.summary.merge([summary_stochastic_accuracy_x,
-                                                  summary_stochastic_accuracy_y,
-                                                  summary_stochastic_accuracy_z])
 
         total_loss = loss_x + loss_y + loss_z # [batch, max_vertices, samples_per_vertex]
         total_loss = tf.reduce_mean(total_loss, axis=-1)
         total_loss = tf.reduce_sum(total_loss, axis=-1) / tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
         total_loss = tf.reduce_mean(total_loss)
 
+
+        validation_summary_loss = tf.summary.scalar('validation_loss', total_loss)
+        training_summary_loss = tf.summary.scalar('training_loss', total_loss)
+
+        self.summary_training = tf.summary.merge([training_summary_stochastic_accuracy_x,
+                                                  training_summary_stochastic_accuracy_y,
+                                                  training_summary_stochastic_accuracy_z,
+                                                  training_summary_loss])
+        self.summary_validation = tf.summary.merge([summary_stochastic_accuracy_x,
+                                                  summary_stochastic_accuracy_y,
+                                                  summary_stochastic_accuracy_z,
+                                                  validation_summary_loss])
 
         loss = total_loss
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(loss)
@@ -259,13 +277,10 @@ class BasicModel(ModelInterface):
             graph_features = self.build_graph_segment(vertices_combined_features)
 
             classification_head = self.do_monte_carlo_sampling(graph_features,
-                                                               [placeholders['placeholder_row_adj_matrix'],
+                                                               [placeholders['placeholder_cell_adj_matrix'],
                                                                 placeholders['placeholder_row_adj_matrix'],
-                                                                placeholders['placeholder_row_adj_matrix']])
+                                                                placeholders['placeholder_col_adj_matrix']])
             self.loss, self.optimizer = self.build_classification_model(classification_head)
-            self.predicted_cell_adj_matrix = None
-            self.predicted_rows_adj_matrix = None
-            self.predicted_cols_adj_matrix = None
 
         self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.get_variable_scope()))
 
@@ -285,7 +300,7 @@ class BasicModel(ModelInterface):
             self._placeholder_col_adj_matrix : feeds[5],
         }
         loss,_, summary_result = sess.run([self.loss, self.optimizer, self.summary_training], feed_dict = feed_dict)
-        summary_writer.add_summary(summary_result)
+        summary_writer.add_summary(summary_result, iteration_number)
 
         print("Iteration %d - Loss %.4E" % (iteration_number, loss))
 
@@ -300,8 +315,22 @@ class BasicModel(ModelInterface):
             self._placeholder_row_adj_matrix : feeds[4],
             self._placeholder_col_adj_matrix : feeds[5],
         }
-        loss,_, summary_result = sess.run([self.loss, self.summary_validation], feed_dict = feed_dict)
-        summary_writer.add_summary(summary_result)
+
+        loss, summary_result, pcells, prows, pcols, sampled_indices = sess.run([self.loss, self.summary_validation, self.predicted_cell_adj_matrix,
+                                         self.predicted_rows_adj_matrix, self.predicted_cols_adj_matrix, self.graph_sampled_indices],
+                                        feed_dict = feed_dict)
+        summary_writer.add_summary(summary_result, iteration_number)
+
+
+        data = {
+            'image' : feeds[1][0],
+            'sampled_ground_truths' : [feeds[3][0], feeds[4][0], feeds[5][0]],
+            'sampled_predictions' : [pcells[0], prows[0], pcols[0]],
+            'sampled_indices' : sampled_indices[0],
+            'global_features' : feeds[2][0],
+            'vertex_features' : feeds[0][0],
+        }
+        self.visual_feedback_generator.add(iteration_number,  data)
 
         print("VALIDATION Iteration %d - Loss %.4E"  % (iteration_number, loss))
 
@@ -356,6 +385,7 @@ class BasicModel(ModelInterface):
             image = image[:,:,0]
 
         image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        _image = image.copy()
 
         for i in range(num_vertices):
             x = vertex_features[i, 0]
@@ -364,6 +394,26 @@ class BasicModel(ModelInterface):
             y2 = vertex_features[i, 3]
 
             cv2.rectangle(image, (x,y), (x2, y2), color=(255,0,0))
+
+        num_sanity_per_matrix = 10
+
+        def draw_sanity_adj(matrix, name):
+            for i in range(num_sanity_per_matrix):
+                image_x = _image.copy()
+                x = random.randint(0, num_vertices)
+                loc_me = (vertex_features[x, 0],vertex_features[x, 1]), (vertex_features[x, 2],vertex_features[x, 3])
+                neighbors = np.argwhere(matrix[x]==1)
+
+                for y in neighbors:
+                    loc_him = (vertex_features[y, 0], vertex_features[y, 1]), (vertex_features[y, 2], vertex_features[y, 3])
+                    cv2.rectangle(image_x, loc_him[0], loc_him[1], color=(255, 0, 0))
+
+                cv2.rectangle(image_x, loc_me[0], loc_me[1], color=(0, 255, 0))
+                cv2.imwrite(os.path.join(self.visual_feedback_out_path, 'sanity_%s_adj_%d.png' % (name, i)), image_x)
+
+        draw_sanity_adj(cell_adj, 'cells')
+        draw_sanity_adj(row_adj, 'rows')
+        draw_sanity_adj(col_adj, 'cols')
 
         cv2.imwrite(os.path.join(self.visual_feedback_out_path, 'sanity_boxes.png'), image)
 

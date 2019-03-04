@@ -50,9 +50,9 @@ class TableAdjacencyParsingIterator (Iterator):
             subprocess.call("mkdir -p %s"%(self.test_out_path), shell=True)
             subprocess.call("mkdir -p %s"%(os.path.join(self.test_out_path, 'ops')), shell=True)
             subprocess.call("mkdir -p %s" % (self.visual_feedback_out_path), shell=True)
-
-        else:
             self.clean_summary_dir()
+        else:
+            pass
 
         # tpu_grpc_url = TPUClusterResolver(
         #     tpu=[os.environ['TPU_NAME']]).get_master()

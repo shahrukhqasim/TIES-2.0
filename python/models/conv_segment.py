@@ -4,13 +4,13 @@ import tensorflow as tf
 
 class BasicConvSegment(NetworkSegmentInterface):
     def build_network_segment(self, inputs):
-        conv_computation_graph = inputs
-        conv_computation_graph = tf.image.resize_images(conv_computation_graph, size=(256,256))
-        conv_computation_graph = tf.layers.conv2d(conv_computation_graph, filters=10, kernel_size=3)
-        conv_computation_graph = tf.layers.conv2d(conv_computation_graph, filters=10, kernel_size=3)
-        conv_computation_graph = tf.layers.conv2d(conv_computation_graph, filters=10, kernel_size=3)
-        conv_computation_graph = tf.layers.conv2d(conv_computation_graph, filters=10, kernel_size=3)
-        conv_computation_graph = tf.layers.conv2d(conv_computation_graph, filters=10, kernel_size=3)
-        conv_computation_graph = tf.layers.conv2d(conv_computation_graph, filters=10, kernel_size=3)
+        _graph_from_image = inputs
+        _graph_from_image = tf.image.resize_images(_graph_from_image, size=(256,256))
+        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
+        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
+        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
+        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
+        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
+        _graph_from_image = tf.layers.conv2d(_graph_from_image, filters=10, kernel_size=3)
 
-        return conv_computation_graph
+        return _graph_from_image
