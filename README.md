@@ -23,8 +23,9 @@ to an entity which handles training, testing etc.
 
 ## Requirements
 1. Python 3.5+
-2. TensorFlow 1.8+
+2. TensorFlow 1.12
 3. Matplotlib
 4. Overrides (`pip install overrides`)
 5. `configparser`
-5. More added as I install them
+6. `opencv-python`
+7. More added as I install them
