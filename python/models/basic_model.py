@@ -5,14 +5,10 @@ import tensorflow as tf
 from caloGraphNN import layer_GravNet, layer_global_exchange, layer_GarNet, high_dim_dense
 from readers.image_words_reader import ImageWordsReader
 from ops.ties import *
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 import os
 import cv2
 from models.conv_segment import BasicConvSegment
-
+from libs.inference_output_streamer import InferenceOutputStreamer
 
 class BasicModel(ModelInterface):
     @overrides
@@ -39,6 +35,7 @@ class BasicModel(ModelInterface):
         self.learning_rate = gconfig.get_config_param("learning_rate", "float")
 
         self.visual_feedback_out_path = gconfig.get_config_param("visual_feedback_out_path", type="str")
+        self.test_output_path = gconfig.get_config_param("test_out_path", type="str")
 
 
         self.training = training
@@ -61,6 +58,9 @@ class BasicModel(ModelInterface):
                                                       self.image_height, self.image_width, self.image_channels,
                                                       self.max_words_len, self.num_batch)
             self.testing_feeds = self.testing_reader.get_feeds()
+
+            self.inference_output_streamer = InferenceOutputStreamer(self.test_output_path)
+            self.inference_output_streamer.start_thread()
 
         self.conv_segment = BasicConvSegment()
 
@@ -130,8 +130,13 @@ class BasicModel(ModelInterface):
         return x * tf.cast(mask, tf.float32)
 
     def do_monte_carlo_sampling(self, graph, gt_matrices):
-        x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(self.max_vertices, self.samples_per_vertex))
-        x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
+        if self.training:
+            x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(self.max_vertices, self.samples_per_vertex))
+            x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
+        else:
+            # TODO: Could be  made faster since the subsequent gather operations can be avoided now
+            x = tf.tile(tf.range(0, self.max_vertices)[tf.newaxis, :, tf.newaxis], multiples=[self.num_batch, 1,
+                                                                                              self.samples_per_vertex])
 
         y = tf.range(0, self.num_batch)[...,tf.newaxis] # [batch, 1]
         y = tf.tile(y, multiples=[1, self.max_vertices]) # [batch, max_vertices]
@@ -200,36 +205,6 @@ class BasicModel(ModelInterface):
         return loss, optimizer
 
 
-    def _make_model(self):
-        self.make_placeholders()
-        placeholders = self.placeholders_dict
-
-        _, image_height, image_width, _ = placeholders['placeholder_image'].shape
-        conv_head = self.conv_segment.build_network_segment(placeholders['placeholder_image'])
-
-        vertices_y = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_y_position", "int")]
-        vertices_x = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_x_position", "int")]
-        vertices_y2 = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_y2_position", "int")]
-        vertices_x2 = placeholders['placeholder_vertex_features'][:, :, gconfig.get_config_param("dim_vertex_x2_position", "int")]
-
-        _, post_height, post_width, _ = conv_head.shape
-        post_height, post_width, image_height, image_width =  float(post_height.value), float(post_width.value),\
-                                                              float(image_height.value), float(image_width.value)
-
-        scale_y = float(post_height) / float(image_height)
-        scale_x = float(post_width) / float(image_width)
-        gathered_image_features = gather_features_from_conv_head(conv_head, vertices_y, vertices_x,
-                                                                         vertices_y2, vertices_x2, scale_y, scale_x)
-        vertices_combined_features = tf.concat((placeholders['placeholder_vertex_features'], gathered_image_features), axis=-1)
-        graph_features = self.build_graph_segment(vertices_combined_features)
-
-        classification_head = self.do_monte_carlo_sampling(graph_features,
-                                                           [placeholders['placeholder_row_adj_matrix'],
-                                                                   placeholders['placeholder_row_adj_matrix'],
-                                                                   placeholders['placeholder_row_adj_matrix']])
-        loss, optimizer = self.build_classification_model(classification_head)
-        return loss, optimizer
-
     def build_computation_graphs(self):
         with tf.variable_scope(self.get_variable_scope()):
             self.make_placeholders()
@@ -264,6 +239,9 @@ class BasicModel(ModelInterface):
                                                                 placeholders['placeholder_row_adj_matrix'],
                                                                 placeholders['placeholder_row_adj_matrix']])
             self.loss, self.optimizer = self.build_classification_model(classification_head)
+            self.predicted_cell_adj_matrix = None
+            self.predicted_rows_adj_matrix = None
+            self.predicted_cols_adj_matrix = None
 
         self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.get_variable_scope()))
 
@@ -297,14 +275,14 @@ class BasicModel(ModelInterface):
             self._placeholder_row_adj_matrix : feeds[4],
             self._placeholder_col_adj_matrix : feeds[5],
         }
-        loss,_ = sess.run([self.loss, self.optimizer], feed_dict = feed_dict)
+        loss,_ = sess.run([self.loss], feed_dict = feed_dict)
 
         print("VALIDATION Iteration %d - Loss %.4E"  % (iteration_number, loss))
 
     @overrides
     def run_testing_iteration(self, sess, summary_writer, iteration_number):
 
-        feeds = sess.run(self.testing_feeds)
+        feeds = sess.run(self.training_feeds)
         feed_dict = {
             self._placeholder_vertex_features : feeds[0],
             self._placeholder_image : feeds[1],
@@ -313,10 +291,29 @@ class BasicModel(ModelInterface):
             self._placeholder_row_adj_matrix : feeds[4],
             self._placeholder_col_adj_matrix : feeds[5],
         }
-        loss,_ = sess.run([self.loss, self.optimizer], feed_dict = feed_dict)
+        loss, pcells, prows, pcols, ax, ay, az = sess.run([self.loss, self.predicted_cell_adj_matrix,
+                                       self.predicted_rows_adj_matrix, self.predicted_cols_adj_matrix, self.accuracy_x,
+                                       self.accuracy_y, self.accuracy_z], feed_dict = feed_dict)
+
+
+        # [0] is for test
+        feed_output = {
+            "vertex_features" : feeds[0][0],
+            "image" : feeds[1][0],
+            "global_features" : feeds[2][0],
+            "gt_cells_adj_matrix" : feeds[3][0],
+            "gt_rows_adj_matrix" : feeds[4][0],
+            "gt_cols_adj_matrix" : feeds[5][0],
+            "predicted_cells_adj_matrix" : pcells[0],
+            "predicted_rows_adj_matrix" : prows[0],
+            "predicted_cols_adj_matrix" : pcols[0]
+        }
+
+        print("Iteration %d - Loss %.4E %.3f %.3f %.3f" % (iteration_number, loss, ax, ay, az))
+
+        self.inference_output_streamer.add(feed_output)
 
         print("TESTING Iteration %d - Loss %.4E"  % (iteration_number, loss))
-        print("Unimplemented warning: Inference result not being saved")
 
     def sanity_preplot(self, sess, summary_writer):
         feeds = sess.run(self.validation_feeds)
@@ -341,10 +338,7 @@ class BasicModel(ModelInterface):
             y2 = vertex_features[i, 3]
 
             cv2.rectangle(image, (x,y), (x2, y2), color=(255,0,0))
-            # rect = patches.Rectangle((x, y), width, height, linewidth=1, edgecolor='r', facecolor='none')
-            # ax.add_patch(rect)
 
-        plt.savefig(os.path.join(self.visual_feedback_out_path, 'sanity_boxes.png'))
         cv2.imwrite(os.path.join(self.visual_feedback_out_path, 'sanity_boxes.png'), image)
 
 

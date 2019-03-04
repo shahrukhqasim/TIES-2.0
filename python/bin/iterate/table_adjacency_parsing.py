@@ -8,7 +8,7 @@ if __name__ != "__main__":
     exit(0)
 
 
-parser = argparse.ArgumentParser(description='Run training for graph based clustering')
+parser = argparse.ArgumentParser(description='Run training/testing/validation for graph based clustering')
 parser.add_argument('input', help="Path to config file")
 parser.add_argument('config', help="Config section within the config file")
 parser.add_argument('--test', default=False, help="Whether to run evaluation on test set")
