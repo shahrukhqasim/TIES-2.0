@@ -195,11 +195,27 @@ class BasicModel(ModelInterface):
         self.accuracy_x = self.reduce_mean_variable_vertices(accuracy_x)
         self.accuracy_y = self.reduce_mean_variable_vertices(accuracy_y)
         self.accuracy_z = self.reduce_mean_variable_vertices(accuracy_z)
+        summary_stochastic_accuracy_x = tf.summary.scalar('stochastic_accuracy_x', self._graph_loss)
+        summary_stochastic_accuracy_y = tf.summary.scalar('stochastic_accuracy_y', self._graph_loss)
+        summary_stochastic_accuracy_z = tf.summary.scalar('stochastic_accuracy_z', self._graph_loss)
+
+        training_summary_stochastic_accuracy_x = tf.summary.scalar('training_stochastic_accuracy_x', self._graph_loss)
+        training_summary_stochastic_accuracy_y = tf.summary.scalar('training_stochastic_accuracy_y', self._graph_loss)
+        training_summary_stochastic_accuracy_z = tf.summary.scalar('training_stochastic_accuracy_z', self._graph_loss)
+
+        self.summary_training = tf.summary.merge([training_summary_stochastic_accuracy_x,
+                                                  training_summary_stochastic_accuracy_y,
+                                                  training_summary_stochastic_accuracy_z])
+        self.summary_validation = tf.summary.merge([summary_stochastic_accuracy_x,
+                                                  summary_stochastic_accuracy_y,
+                                                  summary_stochastic_accuracy_z])
 
         total_loss = loss_x + loss_y + loss_z # [batch, max_vertices, samples_per_vertex]
         total_loss = tf.reduce_mean(total_loss, axis=-1)
         total_loss = tf.reduce_sum(total_loss, axis=-1) / tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
         total_loss = tf.reduce_mean(total_loss)
+
+
         loss = total_loss
         optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(loss)
         return loss, optimizer
@@ -260,9 +276,10 @@ class BasicModel(ModelInterface):
             self._placeholder_row_adj_matrix : feeds[4],
             self._placeholder_col_adj_matrix : feeds[5],
         }
-        loss,_, ax, ay, az = sess.run([self.loss, self.optimizer, self.accuracy_x, self.accuracy_y, self.accuracy_z], feed_dict = feed_dict)
+        loss,_, summary_result = sess.run([self.loss, self.optimizer, self.summary_training], feed_dict = feed_dict)
+        summary_writer.add_summary(summary_result)
 
-        print("Iteration %d - Loss %.4E %.3f %.3f %.3f" % (iteration_number, loss, ax, ay, az))
+        print("Iteration %d - Loss %.4E" % (iteration_number, loss))
 
     @overrides
     def run_validation_iteration(self, sess, summary_writer, iteration_number):
@@ -275,14 +292,15 @@ class BasicModel(ModelInterface):
             self._placeholder_row_adj_matrix : feeds[4],
             self._placeholder_col_adj_matrix : feeds[5],
         }
-        loss,_ = sess.run([self.loss], feed_dict = feed_dict)
+        loss,_, summary_result = sess.run([self.loss, self.summary_validation], feed_dict = feed_dict)
+        summary_writer.add_summary(summary_result)
 
         print("VALIDATION Iteration %d - Loss %.4E"  % (iteration_number, loss))
 
     @overrides
     def run_testing_iteration(self, sess, summary_writer, iteration_number):
 
-        feeds = sess.run(self.training_feeds)
+        feeds = sess.run(self.testing_feeds)
         feed_dict = {
             self._placeholder_vertex_features : feeds[0],
             self._placeholder_image : feeds[1],
