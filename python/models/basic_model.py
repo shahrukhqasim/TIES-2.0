@@ -129,16 +129,17 @@ class BasicModel(ModelInterface):
         return high_dim_dense(x, 32, activation=tf.nn.relu)
 
     def get_distribution_for_mote_carlo_sampling(self, placeholders):
-        x = tf.ones(shape=(self.num_batch, self.max_vertices), dtype=tf.float32)
+        x = tf.ones(shape=(self.num_batch, self.max_vertices), dtype=tf.float32) # [batch, max_vertices]
         x = x / placeholders['placeholder_global_features'][:, self.dim_num_vertices][..., tf.newaxis]
-        mask = tf.sequence_mask(placeholders['placeholder_global_features'][:, self.dim_num_vertices], maxlen=self.max_vertices) # [batch, num_vertices, 1] It will broadcast on the last dimension!
+        mask = tf.sequence_mask(placeholders['placeholder_global_features'][:, self.dim_num_vertices], maxlen=self.max_vertices) # [batch, num_vertices] It will broadcast on the last dimension!
 
         return x * tf.cast(mask, tf.float32)
 
     def do_monte_carlo_sampling(self, graph, gt_matrices):
         if self.training:
             if self.tile_samples:
-                x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(1, self.samples_per_vertex))
+                x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(
+                    self.placeholders_dict)).sample(sample_shape=(1, self.samples_per_vertex))  # [batch, max_vertices] = [1, samples, batch, max_vertices]
                 x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
                 x = tf.tile(x, multiples=[1, self.max_vertices, 1])
             else:
@@ -156,11 +157,11 @@ class BasicModel(ModelInterface):
         y = tf.range(0, self.num_batch)[...,tf.newaxis] # [batch, 1]
         y = tf.tile(y, multiples=[1, self.max_vertices]) # [batch, max_vertices]
 
-        z = tf.range(0, self.max_vertices)[tf.newaxis, ..., tf.newaxis]
-        z = tf.tile(z, multiples=[self.num_batch, 1, 1])
+        z = tf.range(0, self.max_vertices)[tf.newaxis, ..., tf.newaxis] # [1, max_vertices, 1]
+        z = tf.tile(z, multiples=[self.num_batch, 1, 1]) #[batch, max_vertices, 1]  # [batch, max_vertices, samples]
 
-        batch_range_1 = tf.tile(y[..., tf.newaxis], multiples=[1, 1, self.samples_per_vertex])
-        max_vertices_range_1 = tf.tile(z, multiples=[1, 1, self.samples_per_vertex])
+        batch_range_1 = tf.tile(y[..., tf.newaxis], multiples=[1, 1, self.samples_per_vertex]) # [batch, max_vertices, samples]
+        max_vertices_range_1 = tf.tile(z, multiples=[1, 1, self.samples_per_vertex]) # [batch, max_vertices, samples]
 
         indexing_tensor_for_adj_matrices = tf.concat((batch_range_1[..., tf.newaxis],max_vertices_range_1[..., tf.newaxis],x[..., tf.newaxis]), axis=-1)
         indexing_tensor = tf.concat((batch_range_1[..., tf.newaxis], x[..., tf.newaxis]), axis=-1)
@@ -207,6 +208,10 @@ class BasicModel(ModelInterface):
         self.predicted_cell_adj_matrix = tf.argmax(x, axis=-1)
         self.predicted_rows_adj_matrix = tf.argmax(y, axis=-1)
         self.predicted_cols_adj_matrix = tf.argmax(z, axis=-1)
+
+        self.gt_cell_adj_matrix = truths[0]
+        self.gt_rows_adj_matrix = truths[1]
+        self.gt_cols_adj_matrix = truths[2]
 
         accuracy_x = tf.cast(tf.equal(self.predicted_cell_adj_matrix, truths[0]), tf.float32) * mask
         accuracy_y = tf.cast(tf.equal(self.predicted_rows_adj_matrix, truths[1]), tf.float32) * mask
@@ -316,16 +321,20 @@ class BasicModel(ModelInterface):
             self._placeholder_col_adj_matrix : feeds[5],
         }
 
-        loss, summary_result, pcells, prows, pcols, sampled_indices = sess.run([self.loss, self.summary_validation, self.predicted_cell_adj_matrix,
-                                         self.predicted_rows_adj_matrix, self.predicted_cols_adj_matrix, self.graph_sampled_indices],
+        loss, summary_result, pcells, prows, pcols, sampled_indices, tcells, trows, tcols = sess.run([self.loss, self.summary_validation, self.predicted_cell_adj_matrix,
+                                         self.predicted_rows_adj_matrix, self.predicted_cols_adj_matrix, self.graph_sampled_indices,
+                                                                                self.gt_cell_adj_matrix,
+                                                                                self.gt_rows_adj_matrix,
+                                                                                self.gt_cols_adj_matrix
+                                                                                ],
                                         feed_dict = feed_dict)
         summary_writer.add_summary(summary_result, iteration_number)
 
 
         data = {
             'image' : feeds[1][0],
-            'sampled_ground_truths' : [feeds[3][0], feeds[4][0], feeds[5][0]],
-            'sampled_predictions' : [pcells[0], prows[0], pcols[0]],
+            'sampled_ground_truths' : [tcells[0], trows[1], tcols[2]],
+            'sampled_predictions' : [pcells[0], prows[1], pcols[2]],
             'sampled_indices' : sampled_indices[0],
             'global_features' : feeds[2][0],
             'vertex_features' : feeds[0][0],

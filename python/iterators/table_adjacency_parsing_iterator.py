@@ -6,8 +6,6 @@ from models.model_interface import ModelInterface
 import subprocess
 import os
 from models.model_factory import ModelFactory
-from tensorflow.contrib import tpu
-# from tensorflow.contrib.cluster_resolver import TPUClusterResolver
 
 
 class TableAdjacencyParsingIterator (Iterator):
