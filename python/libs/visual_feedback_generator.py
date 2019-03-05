@@ -112,20 +112,29 @@ class VisualFeedbackGenerator:
                 image_copy = image.copy()
 
                 print("-------- Check this ------------")
-                print(_gt[:, sample])
+                print(_pred[:, sample])
                 print("-------- Check complete --------")
 
                 for i in range(num_vertices):
-                    if _pred[i, sample] == 0 and  _gt[i, sample] == 0: # Blue
-                        cv2.rectangle(image_copy, (x1s[i], y1s[i]), (x2s[i], y2s[i]), color=color_1)
-                    elif _pred[i, sample] == 1 and  _gt[i, sample] == 1: # Green
+                    if _gt[i, sample] == 1:
+                        print("here XX", (x1s[i], y1s[i]), (x2s[i], y2s[i]))
+
                         cv2.rectangle(image_copy, (x1s[i], y1s[i]), (x2s[i], y2s[i]), color=color_2)
-                    elif _pred[i, sample] == 1 and  _gt[i, sample] == 0: # Red
-                        cv2.rectangle(image_copy, (x1s[i], y1s[i]), (x2s[i], y2s[i]), color=color_3)
-                    elif _pred[i, sample] == 0 and  _gt[i, sample] == 1: # Pink
-                        cv2.rectangle(image_copy, (x1s[i], y1s[i]), (x2s[i], y2s[i]), color=color_4)
-                    else:
-                        assert False
+
+                    # if _pred[i, sample] == 0 and  _gt[i, sample] == 0: # Blue
+                    #     print("here 1")
+                    #     # cv2.rectangle(image_copy, (x1s[i], y1s[i]), (x2s[i], y2s[i]), color=color_1)
+                    # elif _pred[i, sample] == 1 and  _gt[i, sample] == 1: # Green
+                    #     print("here 2")
+                    #     # cv2.rectangle(image_copy, (x1s[i], y1s[i]), (x2s[i], y2s[i]), color=color_2)
+                    # elif _pred[i, sample] == 1 and  _gt[i, sample] == 0: # Red
+                    #     print("here 3")
+                    #     # cv2.rectangle(image_copy, (x1s[i], y1s[i]), (x2s[i], y2s[i]), color=color_3)
+                    # elif _pred[i, sample] == 0 and  _gt[i, sample] == 1: # Pink
+                    #     print("here 4")
+                    #     # cv2.rectangle(image_copy, (x1s[i], y1s[i]), (x2s[i], y2s[i]), color=color_4)
+                    # else:
+                    #     assert False
 
                 print("Sampled vertex coordinates", (x1s[sample_index], y1s[sample_index]), (x2s[sample_index], y2s[sample_index]))
 

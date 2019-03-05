@@ -333,8 +333,8 @@ class BasicModel(ModelInterface):
 
         data = {
             'image' : feeds[1][0],
-            'sampled_ground_truths' : [tcells[0], trows[1], tcols[2]],
-            'sampled_predictions' : [pcells[0], prows[1], pcols[2]],
+            'sampled_ground_truths' : [tcells[0], trows[0], tcols[0]],
+            'sampled_predictions' : [pcells[0], prows[0], pcols[0]],
             'sampled_indices' : sampled_indices[0],
             'global_features' : feeds[2][0],
             'vertex_features' : feeds[0][0],
