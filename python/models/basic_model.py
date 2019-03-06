@@ -2,7 +2,7 @@ from models.model_interface import ModelInterface
 from overrides import overrides
 from libs.configuration_manager import ConfigurationManager as gconfig
 import tensorflow as tf
-from caloGraphNN import layer_GravNet, layer_global_exchange, layer_GarNet, high_dim_dense
+from caloGraphNN import *
 from readers.image_words_reader import ImageWordsReader
 from ops.ties import *
 import os
@@ -110,23 +110,57 @@ class BasicModel(ModelInterface):
             "placeholder_col_adj_matrix" : _placeholder_col_adj_matrix,
         }
 
+    def dgcnn_model(self, feat):
+        feat = high_dim_dense(feat, 64)  # global transform to 3D
+
+        feat = edge_conv_layer(feat, 10, [64, 64, 64])
+        feat_g = layer_global_exchange(feat)
+
+        feat = tf.layers.dense(tf.concat([feat, feat_g], axis=-1),
+                               64, activation=tf.nn.relu)
+
+        feat1 = edge_conv_layer(feat, 10, [64, 64, 64])
+        feat1_g = layer_global_exchange(feat1)
+        feat1 = tf.layers.dense(tf.concat([feat1, feat1_g], axis=-1),
+                                64, activation=tf.nn.relu)
+
+        feat2 = edge_conv_layer(feat1, 10, [64, 64, 64])
+        feat2_g = layer_global_exchange(feat2)
+        feat2 = tf.layers.dense(tf.concat([feat2, feat2_g], axis=-1),
+                                64, activation=tf.nn.relu)
+
+        feat3 = edge_conv_layer(feat2, 10, [64, 64, 64])
+
+        # global_feat = tf.layers.dense(feat2,1024,activation=tf.nn.relu)
+        # global_feat = max_pool_on_last_dimensions(global_feat, skip_first_features=0, n_output_vertices=1)
+        # print('global_feat',global_feat.shape)
+        # global_feat = tf.tile(global_feat,[1,feat.shape[1],1])
+        # print('global_feat',global_feat.shape)
+
+        feat = tf.concat([feat, feat1, feat2, feat_g, feat1_g, feat2_g, feat3], axis=-1)
+        feat = tf.layers.dense(feat, 128, activation=tf.nn.relu)
+        feat = tf.layers.dense(feat, 128, activation=tf.nn.relu)
+        return feat
+
     def build_graph_segment(self, vertices_combined_features):
         x = vertices_combined_features
-        for i in range(8):
-            x = layer_global_exchange(x)
-            x = high_dim_dense(x, 16, activation=tf.nn.tanh)
-            x = high_dim_dense(x, 16, activation=tf.nn.tanh)
-            x = high_dim_dense(x, 16, activation=tf.nn.tanh)
+        for i in range(4):
+            # x = layer_global_exchange(x)
+            x = high_dim_dense(x, 256, activation=tf.nn.relu)
+            x = high_dim_dense(x, 256, activation=tf.nn.relu)
+            x = high_dim_dense(x, 256, activation=tf.nn.relu)
+
+            # x = layer_GarNet(x, n_aggregators=10, n_filters=256, n_propagate=256)
 
             x = layer_GravNet(x,
-                              n_neighbours=40,
-                              n_dimensions=4,
-                              n_filters=42,
-                              n_propagate=18)
-            x = tf.layers.batch_normalization(x, momentum=0.6, training=True) # TODO: Fix training parameter
+                              n_neighbours=10,
+                              n_dimensions=10,
+                              n_filters=256,
+                              n_propagate=256)
+            # x = tf.layers.batch_normalization(x, momentum=0.6, training=True) # TODO: Fix training parameter
 
-        x = high_dim_dense(x, 128, activation=tf.nn.relu)
-        return high_dim_dense(x, 32, activation=tf.nn.relu)
+        x = high_dim_dense(x, 256, activation=tf.nn.relu)
+        return high_dim_dense(x, 256, activation=tf.nn.relu)
 
     def get_distribution_for_mote_carlo_sampling(self, placeholders):
         x = tf.ones(shape=(self.num_batch, self.max_vertices), dtype=tf.float32) # [batch, max_vertices]
@@ -135,18 +169,46 @@ class BasicModel(ModelInterface):
 
         return x * tf.cast(mask, tf.float32)
 
+    def get_balanced_distribution_for_mote_carlo_sampling(self, ground_truth):
+        N = self._placeholder_global_features[:, self.dim_num_vertices] # [b]
+        NN = tf.tile(N[..., tf.newaxis], multiples=[1, self.max_vertices]) # [b]
+
+        M = tf.sequence_mask(tf.cast(N, dtype=tf.int64), maxlen=self.max_vertices) # [b, v]
+        M = tf.cast(M, dtype=tf.float32)
+        MM = tf.cast(tf.sequence_mask(tf.cast(NN, dtype=tf.int64), maxlen=self.max_vertices), tf.float32)* M[...,tf.newaxis] #[b, v, v]
+
+        P = tf.cast(ground_truth, dtype=tf.float32)
+        X = tf.reduce_sum(P, axis=2)
+        Y = tf.reduce_sum(P, axis=2)
+
+        G_0 = tf.cast(tf.equal(ground_truth,0), tf.float32)
+        G_1 = tf.cast(tf.equal(ground_truth,1), tf.float32)
+
+        X = tf.reduce_sum(G_0*MM, axis=2)
+        Y = tf.reduce_sum(G_1*MM, axis=2)
+
+        P_0 = G_0 * 0.5 * ((X+Y)/X)[..., tf.newaxis] * MM
+        P_1 = G_1 * 0.5 * ((X+Y)/Y)[..., tf.newaxis] * MM
+
+        P = P_0 + P_1
+
+        return P
+
     def do_monte_carlo_sampling(self, graph, gt_matrices):
         if self.training:
-            if self.tile_samples:
-                x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(
-                    self.placeholders_dict)).sample(sample_shape=(1, self.samples_per_vertex))  # [batch, max_vertices] = [1, samples, batch, max_vertices]
-                x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
-                x = tf.tile(x, multiples=[1, self.max_vertices, 1])
-            else:
-                x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(self.max_vertices, self.samples_per_vertex))
-                x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
-                print("Visual feedback not implemented for this method!")
-                assert False
+            distribution = self.get_balanced_distribution_for_mote_carlo_sampling(gt_matrices[1])
+            x = tf.distributions.Categorical(probs=distribution).sample(sample_shape=(self.samples_per_vertex))  # [batch, max_vertices] = [1, samples, batch, max_vertices]
+            x = tf.transpose(x, perm=[1,2,0]) # [batch, max_vertices, samples_per_vertex]
+            # if self.tile_samples:
+            #     x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(
+            #         self.placeholders_dict)).sample(sample_shape=(1, self.samples_per_vertex))  # [batch, max_vertices] = [1, samples, batch, max_vertices]
+            #     x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
+            #     x = tf.tile(x, multiples=[1, self.max_vertices, 1])
+            # else:
+            #     x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(self.max_vertices, self.samples_per_vertex))
+            #     x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
+            #     print("Visual feedback not implemented for this method!")
+            #     assert False
         else:
             # TODO: Could be  made faster since the subsequent gather operations can be avoided now
             x = tf.tile(tf.range(0, self.max_vertices)[tf.newaxis, :, tf.newaxis], multiples=[self.num_batch, 1,
@@ -189,15 +251,14 @@ class BasicModel(ModelInterface):
     def build_classification_model(self, classification_head):
         graph, truths = classification_head
 
+        net = graph
+        net = tf.layers.dense(net, units=256, activation=tf.nn.relu)
+        net = tf.layers.dense(net, units=256, activation=tf.nn.relu)
+        net = tf.layers.dense(net, units=256, activation=tf.nn.relu)
 
-        x = graph
-        x = tf.layers.dense(x, units=128, activation=tf.nn.relu)
-        x = tf.layers.dense(x, units=128, activation=tf.nn.relu)
-        x = tf.layers.dense(x, units=128, activation=tf.nn.relu)
-
-        x = tf.layers.dense(x, units=2, activation=tf.nn.relu)
-        y = tf.layers.dense(x, units=2, activation=tf.nn.relu)
-        z = tf.layers.dense(x, units=2, activation=tf.nn.relu)
+        x = tf.layers.dense(net, units=2, activation=tf.nn.relu)
+        y = tf.layers.dense(net, units=2, activation=tf.nn.relu)
+        z = tf.layers.dense(net, units=2, activation=tf.nn.relu)
 
         mask = tf.sequence_mask(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], maxlen=self.max_vertices)[..., tf.newaxis]
         mask = tf.cast(mask, dtype=tf.float32)
@@ -208,6 +269,8 @@ class BasicModel(ModelInterface):
         self.predicted_cell_adj_matrix = tf.argmax(x, axis=-1)
         self.predicted_rows_adj_matrix = tf.argmax(y, axis=-1)
         self.predicted_cols_adj_matrix = tf.argmax(z, axis=-1)
+
+        self.predicted_rows_adj_matrix = tf.Print(self.predicted_rows_adj_matrix, [tf.reduce_sum(self.predicted_rows_adj_matrix)], 'predicted sum')
 
         self.gt_cell_adj_matrix = truths[0]
         self.gt_rows_adj_matrix = truths[1]
@@ -229,7 +292,8 @@ class BasicModel(ModelInterface):
         training_summary_stochastic_accuracy_z = tf.summary.scalar('training_stochastic_accuracy_z', self.accuracy_z)
 
 
-        total_loss = loss_x + loss_y + loss_z # [batch, max_vertices, samples_per_vertex]
+        total_loss = loss_y
+        # total_loss = loss_x + loss_y + loss_z
         total_loss = tf.reduce_mean(total_loss, axis=-1)
         total_loss = tf.reduce_sum(total_loss, axis=-1) / tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
         total_loss = tf.reduce_mean(total_loss)
@@ -277,9 +341,12 @@ class BasicModel(ModelInterface):
             scale_x = float(post_width) / float(image_width)
             gathered_image_features = gather_features_from_conv_head(conv_head, vertices_y, vertices_x,
                                                                      vertices_y2, vertices_x2, scale_y, scale_x)
+
+            _graph_vertex_features = placeholders['placeholder_vertex_features']
             vertices_combined_features = tf.concat(
-                (placeholders['placeholder_vertex_features'], gathered_image_features), axis=-1)
-            graph_features = self.build_graph_segment(vertices_combined_features)
+                (_graph_vertex_features, gathered_image_features), axis=-1)
+
+            graph_features = self.dgcnn_model(vertices_combined_features)
 
             classification_head = self.do_monte_carlo_sampling(graph_features,
                                                                [placeholders['placeholder_cell_adj_matrix'],
@@ -311,6 +378,7 @@ class BasicModel(ModelInterface):
 
     @overrides
     def run_validation_iteration(self, sess, summary_writer, iteration_number):
+        return
         feeds = sess.run(self.validation_feeds)
         feed_dict = {
             self._placeholder_vertex_features : feeds[0],

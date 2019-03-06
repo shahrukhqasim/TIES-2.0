@@ -1,4 +1,5 @@
 import tensorflow as tf
+from caloGraphNN import *
 
 
 
@@ -29,3 +30,31 @@ def gather_features_from_conv_head(conv_head, vertices_y, vertices_x, vertices_y
     indexing_tensor = tf.concat((batch_range, ((vertices_y + vertices_y2 ) /2)[..., tf.newaxis], ((vertices_x + vertices_x2 ) /2)[..., tf.newaxis]), axis=-1)
     indexing_tensor = tf.cast(indexing_tensor, tf.int64)
     return tf.gather_nd(conv_head, indexing_tensor)
+
+
+def edge_conv_layer(vertices_in, num_neighbors=30,
+                          mpl_layers=[64, 64, 64],
+                          aggregation_function=tf.reduce_max,
+                          share_keyword=None,  # TBI,
+                          edge_activation=None
+                          ):
+    trans_space = vertices_in
+    indexing, _ = indexing_tensor(trans_space, num_neighbors)
+    # change indexing to be not self-referential
+    neighbour_space = tf.gather_nd(vertices_in, indexing)
+
+    expanded_trans_space = tf.expand_dims(trans_space, axis=2)
+    expanded_trans_space = tf.tile(expanded_trans_space, [1, 1, num_neighbors, 1])
+
+    diff = expanded_trans_space - neighbour_space
+    edge = tf.concat([expanded_trans_space, diff], axis=-1)
+
+    for f in mpl_layers:
+        edge = tf.layers.dense(edge, f, activation=tf.nn.relu)
+
+    if edge_activation is not None:
+        edge = edge_activation(edge)
+
+    vertex_out = aggregation_function(edge, axis=2)
+
+    return vertex_out
