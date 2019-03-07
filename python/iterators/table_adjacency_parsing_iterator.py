@@ -20,16 +20,21 @@ class TableAdjacencyParsingIterator (Iterator):
         self.visual_feedback_out_path = gconfig.get_config_param("visual_feedback_out_path", type="str")
         self.model = None
 
-
-    def clean_summary_dir(self):
-        print("Cleaning summary dir")
-        for the_file in os.listdir(self.summary_path):
-            file_path = os.path.join(self.summary_path, the_file)
+    def __clean(self, path):
+        for the_file in os.listdir(path):
+            file_path = os.path.join(path, the_file)
             try:
                 if os.path.isfile(file_path):
                     os.unlink(file_path)
             except Exception as e:
                 print(e)
+
+
+    def clean_directories(self):
+        self.__clean(self.summary_path)
+        print("Cleaned summary directory")
+        self.__clean(self.visual_feedback_out_path)
+        print("Cleaned visual feedback output directory")
 
     def initialize(self):
         model_factory = ModelFactory()
@@ -48,7 +53,7 @@ class TableAdjacencyParsingIterator (Iterator):
             subprocess.call("mkdir -p %s"%(self.test_out_path), shell=True)
             subprocess.call("mkdir -p %s"%(os.path.join(self.test_out_path, 'ops')), shell=True)
             subprocess.call("mkdir -p %s" % (self.visual_feedback_out_path), shell=True)
-            self.clean_summary_dir()
+            self.clean_directories()
         else:
             pass
 

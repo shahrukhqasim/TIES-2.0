@@ -12,6 +12,7 @@ from libs.inference_output_streamer import InferenceOutputStreamer
 from libs.visual_feedback_generator import VisualFeedbackGenerator
 import random
 import numpy as np
+from libs.helpers import *
 
 class BasicModel(ModelInterface):
     @overrides
@@ -40,6 +41,8 @@ class BasicModel(ModelInterface):
         self.visual_feedback_out_path = gconfig.get_config_param("visual_feedback_out_path", type="str")
         self.test_output_path = gconfig.get_config_param("test_out_path", type="str")
         self.tile_samples = True # False is not implemented
+
+        self.visualize_validation_results_after = gconfig.get_config_param("visualize_validation_results_after", type="int")
 
 
         self.training = training
@@ -111,6 +114,8 @@ class BasicModel(ModelInterface):
         }
 
     def dgcnn_model(self, feat):
+        feat = tf.layers.batch_normalization(feat, momentum=0.8, training=self.training)
+
         feat = high_dim_dense(feat, 64)  # global transform to 3D
 
         feat = edge_conv_layer(feat, 10, [64, 64, 64])
@@ -194,9 +199,9 @@ class BasicModel(ModelInterface):
 
         return P
 
-    def do_monte_carlo_sampling(self, graph, gt_matrices):
+    def do_monte_carlo_sampling(self, graph, gt_matrix):
         if self.training:
-            distribution = self.get_balanced_distribution_for_mote_carlo_sampling(gt_matrices[1])
+            distribution = self.get_balanced_distribution_for_mote_carlo_sampling(gt_matrix)
             x = tf.distributions.Categorical(probs=distribution).sample(sample_shape=(self.samples_per_vertex))  # [batch, max_vertices] = [1, samples, batch, max_vertices]
             x = tf.transpose(x, perm=[1,2,0]) # [batch, max_vertices, samples_per_vertex]
             # if self.tile_samples:
@@ -214,7 +219,7 @@ class BasicModel(ModelInterface):
             x = tf.tile(tf.range(0, self.max_vertices)[tf.newaxis, :, tf.newaxis], multiples=[self.num_batch, 1,
                                                                                               self.samples_per_vertex])
 
-        self.graph_sampled_indices = x
+        samples = x
 
         y = tf.range(0, self.num_batch)[...,tf.newaxis] # [batch, 1]
         y = tf.tile(y, multiples=[1, self.max_vertices]) # [batch, max_vertices]
@@ -235,11 +240,7 @@ class BasicModel(ModelInterface):
 
         x = tf.concat((x,y), axis=-1)
 
-        truncated_matrices = []
-        for y in gt_matrices:
-            truncated_matrices.append(tf.gather_nd(y, indexing_tensor_for_adj_matrices))
-
-        return x, truncated_matrices
+        return samples, x, tf.gather_nd(gt_matrix, indexing_tensor_for_adj_matrices)
 
     def reduce_mean_variable_vertices(self, x):
         x = tf.reduce_mean(x, axis=-1)
@@ -251,74 +252,106 @@ class BasicModel(ModelInterface):
     def build_classification_model(self, classification_head):
         graph, truths = classification_head
 
+        placeholder_num_features = self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices]
+
+        graph = tf.layers.batch_normalization(graph, momentum=0.8, training=self.training)
         net = graph
         net = tf.layers.dense(net, units=256, activation=tf.nn.relu)
         net = tf.layers.dense(net, units=256, activation=tf.nn.relu)
         net = tf.layers.dense(net, units=256, activation=tf.nn.relu)
 
-        x = tf.layers.dense(net, units=2, activation=tf.nn.relu)
-        y = tf.layers.dense(net, units=2, activation=tf.nn.relu)
-        z = tf.layers.dense(net, units=2, activation=tf.nn.relu)
+        net = tf.layers.dense(net, units=2, activation=tf.nn.relu)
 
-        mask = tf.sequence_mask(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], maxlen=self.max_vertices)[..., tf.newaxis]
+        mask = tf.sequence_mask(placeholder_num_features, maxlen=self.max_vertices)[..., tf.newaxis]
         mask = tf.cast(mask, dtype=tf.float32)
-        loss_x = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[0], depth=2), logits=x) * mask
-        loss_y = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[1], depth=2), logits=y) * mask
-        loss_z = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths[2], depth=2), logits=z) * mask
 
-        self.predicted_cell_adj_matrix = tf.argmax(x, axis=-1)
-        self.predicted_rows_adj_matrix = tf.argmax(y, axis=-1)
-        self.predicted_cols_adj_matrix = tf.argmax(z, axis=-1)
+        predicted_adj_matrix = tf.argmax(net, axis=-1)
 
-        self.predicted_rows_adj_matrix = tf.Print(self.predicted_rows_adj_matrix, [tf.reduce_sum(self.predicted_rows_adj_matrix)], 'predicted sum')
+        classes_fraction =  tf.cast(truths, dtype=tf.float32)
+        classes_fraction = tf.reduce_sum(tf.reduce_mean(classes_fraction, axis=-1) * mask[:,:,0], axis=-1) / tf.cast(placeholder_num_features, tf.float32)
+        classes_fraction = tf.reduce_mean(classes_fraction)
 
-        self.gt_cell_adj_matrix = truths[0]
-        self.gt_rows_adj_matrix = truths[1]
-        self.gt_cols_adj_matrix = truths[2]
+        accuracy = tf.cast(tf.equal(predicted_adj_matrix, truths), tf.float32) * mask
+        accuracy = self.reduce_mean_variable_vertices(accuracy)
 
-        temp =  tf.cast(self.gt_rows_adj_matrix, dtype=tf.float32)
-        temp = tf.reduce_sum(tf.reduce_mean(temp, axis=-1) * mask[:,:,0], axis=-1)/tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
-        temp = tf.reduce_mean(temp)
+        loss = tf.nn.softmax_cross_entropy_with_logits_v2(labels=tf.one_hot(truths, depth=2), logits=net) * mask
+        loss = tf.reduce_mean(loss, axis=-1)
+        loss = tf.reduce_sum(loss, axis=-1) / tf.cast(placeholder_num_features, tf.float32)
+        loss = tf.reduce_mean(loss)
 
-        accuracy_x = tf.cast(tf.equal(self.predicted_cell_adj_matrix, truths[0]), tf.float32) * mask
-        accuracy_y = tf.cast(tf.equal(self.predicted_rows_adj_matrix, truths[1]), tf.float32) * mask
-        accuracy_z = tf.cast(tf.equal(self.predicted_cols_adj_matrix, truths[2]), tf.float32) * mask
+        return_dict = {
+            "accuracy" : accuracy,
+            "loss" : loss,
+            "classes_fraction" : classes_fraction,
+            "predicted_adj_matrix" : predicted_adj_matrix,
+        }
 
-        self.accuracy_x = self.reduce_mean_variable_vertices(accuracy_x)
-        self.accuracy_y = self.reduce_mean_variable_vertices(accuracy_y)
-        self.accuracy_z = self.reduce_mean_variable_vertices(accuracy_z)
-        summary_stochastic_accuracy_x = tf.summary.scalar('validation_stochastic_accuracy_x', self.accuracy_x)
-        summary_stochastic_accuracy_y = tf.summary.scalar('validation_stochastic_accuracy_y', self.accuracy_y)
-        summary_stochastic_accuracy_z = tf.summary.scalar('validation_stochastic_accuracy_z', self.accuracy_z)
+        return return_dict
 
-        training_summary_stochastic_accuracy_x = tf.summary.scalar('training_stochastic_accuracy_x', self.accuracy_x)
-        training_summary_stochastic_accuracy_y = tf.summary.scalar('training_stochastic_accuracy_y', self.accuracy_y)
-        training_summary_stochastic_accuracy_z = tf.summary.scalar('training_stochastic_accuracy_z', self.accuracy_z)
+    def build_classification_segments(self, graph_features, placeholders):
+        keys = ['placeholder_cell_adj_matrix', 'placeholder_row_adj_matrix', 'placeholder_col_adj_matrix']
 
+        gt_sampled_adj_matrices = []
+        predicted_sampled_adj_matrices = []
+        losses = []
+        accuracies = []
+        classes_fractions = []
+        samples = []
+        for type in range(3):
+            gt_sampled_adj_matrix = placeholders[keys[type]]
 
-        total_loss = loss_y
-        total_loss = tf.Print(total_loss, [temp],"Should be ~0.5: ")
-        # total_loss = loss_x + loss_y + loss_z
-        total_loss = tf.reduce_mean(total_loss, axis=-1)
-        total_loss = tf.reduce_sum(total_loss, axis=-1) / tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
-        total_loss = tf.reduce_mean(total_loss)
+            sampled_indices, computation_graph, gt_matrix = self.do_monte_carlo_sampling(graph_features, gt_sampled_adj_matrix)
+            return_dict = self.build_classification_model((computation_graph,gt_matrix))
+            predicted_sampled_adj_matrices.append(return_dict['predicted_adj_matrix'])
+            losses.append(return_dict['loss'])
+            accuracies.append(return_dict['accuracy'])
+            classes_fractions.append(return_dict['classes_fraction'])
+            gt_sampled_adj_matrices.append(gt_matrix)
+            samples.append(sampled_indices)
 
+        summary_training_loss_cells =  tf.summary.scalar('training_loss_cells', losses[0])
+        summary_training_loss_rows =  tf.summary.scalar('training_loss_rows', losses[1])
+        summary_training_loss_cols =  tf.summary.scalar('training_loss_cols', losses[2])
 
-        validation_summary_loss = tf.summary.scalar('validation_loss', total_loss)
-        training_summary_loss = tf.summary.scalar('training_loss', total_loss)
+        summary_validation_loss_cells =  tf.summary.scalar('validation_loss_cells', losses[0])
+        summary_validation_loss_rows =  tf.summary.scalar('validation_loss_rows', losses[1])
+        summary_validation_loss_cols =  tf.summary.scalar('validation_loss_cols', losses[2])
 
-        self.summary_training = tf.summary.merge([training_summary_stochastic_accuracy_x,
-                                                  training_summary_stochastic_accuracy_y,
-                                                  training_summary_stochastic_accuracy_z,
-                                                  training_summary_loss])
-        self.summary_validation = tf.summary.merge([summary_stochastic_accuracy_x,
-                                                  summary_stochastic_accuracy_y,
-                                                  summary_stochastic_accuracy_z,
-                                                  validation_summary_loss])
+        summary_training_accuracy_cells =  tf.summary.scalar('training_loss_cells', accuracies[0])
+        summary_training_accuracy_rows =  tf.summary.scalar('training_loss_rows', accuracies[1])
+        summary_training_accuracy_cols =  tf.summary.scalar('training_loss_cols', accuracies[2])
 
-        loss = total_loss
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(loss)
-        return loss, optimizer
+        summary_validation_accuracy_cells =  tf.summary.scalar('validation_loss_cells', accuracies[0])
+        summary_validation_accuracy_rows =  tf.summary.scalar('validation_loss_rows', accuracies[1])
+        summary_validation_accuracy_cols =  tf.summary.scalar('validation_loss_cols', accuracies[2])
+
+        self.graph_summaries_training = tf.summary.merge([summary_training_loss_cells, summary_training_loss_rows, summary_training_loss_cols,
+                                      summary_training_accuracy_cells, summary_training_accuracy_rows, summary_training_accuracy_cols])
+
+        self.graph_summaries_validation = tf.summary.merge([summary_validation_loss_cells, summary_validation_loss_rows, summary_validation_loss_cols,
+                                      summary_validation_accuracy_cells, summary_validation_accuracy_rows, summary_validation_accuracy_cols])
+
+        alpha = gconfig.get_config_param("loss_alpha", "float")
+        beta = gconfig.get_config_param("loss_beta", "float")
+        gamma = gconfig.get_config_param("loss_gamma", "float")
+
+        alpha = alpha / (alpha+beta+gamma)
+        beta = beta / (alpha+beta+gamma)
+        gamma = gamma / (alpha+beta+gamma)
+
+        total_loss = alpha * losses[0] + beta * losses[1] + gamma * losses[2]
+
+        self.graph_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(total_loss)
+
+        self.graph_prints = tf.print("Accuracy - cells:", accuracies[0], "rows:", accuracies[1], "cols:", accuracies[2], "\n",
+                          "Loss     - cells:", losses[0], "rows:", losses[1], "cols:", losses[2], "\n",
+                          "Fraction - cells:", classes_fractions[0], "rows:", classes_fractions[1], "cols:", classes_fractions[2], "\n",
+                          "Total loss:", total_loss)
+
+        self.graph_gt_sampled_adj_matrices = gt_sampled_adj_matrices
+        self.graph_predicted_sampled_adj_matrices = predicted_sampled_adj_matrices
+        self.graph_sampled_indices = samples
+
 
 
     def build_computation_graphs(self):
@@ -353,17 +386,15 @@ class BasicModel(ModelInterface):
 
             graph_features = self.dgcnn_model(vertices_combined_features)
 
-            classification_head = self.do_monte_carlo_sampling(graph_features,
-                                                               [placeholders['placeholder_cell_adj_matrix'],
-                                                                placeholders['placeholder_row_adj_matrix'],
-                                                                placeholders['placeholder_col_adj_matrix']])
-            self.loss, self.optimizer = self.build_classification_model(classification_head)
+            self.build_classification_segments(graph_features, placeholders)
 
         self.saver = tf.train.Saver(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, self.get_variable_scope()))
+        print("The model has", get_num_parameters(self.get_variable_scope()), "parameters.")
 
     @overrides
     def get_saver(self):
         return self.saver
+
 
     @overrides
     def run_training_iteration(self, sess, summary_writer, iteration_number):
@@ -376,14 +407,16 @@ class BasicModel(ModelInterface):
             self._placeholder_row_adj_matrix : feeds[4],
             self._placeholder_col_adj_matrix : feeds[5],
         }
-        loss,_, summary_result = sess.run([self.loss, self.optimizer, self.summary_training], feed_dict = feed_dict)
-        summary_writer.add_summary(summary_result, iteration_number)
+        print("Training Iteration %d:" % iteration_number)
+        ops_to_run = self.graph_predicted_sampled_adj_matrices + self.graph_gt_sampled_adj_matrices + \
+            self.graph_sampled_indices+ [self.graph_optimizer, self.graph_prints, self.graph_summaries_training]
+        ops_result = sess.run(ops_to_run, feed_dict = feed_dict)
 
-        print("Iteration %d - Loss %.4E" % (iteration_number, loss))
+        summary_writer.add_summary(ops_result[-1], iteration_number)
+
 
     @overrides
     def run_validation_iteration(self, sess, summary_writer, iteration_number):
-        return
         feeds = sess.run(self.validation_feeds)
         feed_dict = {
             self._placeholder_vertex_features : feeds[0],
@@ -394,30 +427,34 @@ class BasicModel(ModelInterface):
             self._placeholder_col_adj_matrix : feeds[5],
         }
 
-        loss, summary_result, pcells, prows, pcols, sampled_indices, tcells, trows, tcols = sess.run([self.loss, self.summary_validation, self.predicted_cell_adj_matrix,
-                                         self.predicted_rows_adj_matrix, self.predicted_cols_adj_matrix, self.graph_sampled_indices,
-                                                                                self.gt_cell_adj_matrix,
-                                                                                self.gt_rows_adj_matrix,
-                                                                                self.gt_cols_adj_matrix
-                                                                                ],
-                                        feed_dict = feed_dict)
-        summary_writer.add_summary(summary_result, iteration_number)
 
+        print("---------------------------------------------------")
+        print("Validation Iteration %d:" % iteration_number)
+        ops_to_run = self.graph_predicted_sampled_adj_matrices + self.graph_gt_sampled_adj_matrices + \
+            self.graph_sampled_indices + [self.graph_prints, self.graph_summaries_training]
+        ops_result = sess.run(ops_to_run, feed_dict = feed_dict)
+        print("---------------------------------------------------")
+
+        summary_writer.add_summary(ops_result[-1], iteration_number)
 
         data = {
             'image' : feeds[1][0],
-            'sampled_ground_truths' : [tcells[0], trows[0], tcols[0]],
-            'sampled_predictions' : [pcells[0], prows[0], pcols[0]],
-            'sampled_indices' : sampled_indices[0],
+            'sampled_ground_truths' : [ops_result[3][0], ops_result[4][0], ops_result[5][0]],
+            'sampled_predictions' : [ops_result[0][0], ops_result[1][0], ops_result[2][0]],
+            'sampled_indices' : [ops_result[6][0], ops_result[7][0], ops_result[8][0]],
             'global_features' : feeds[2][0],
             'vertex_features' : feeds[0][0],
         }
-        self.visual_feedback_generator.add(iteration_number,  data)
 
-        print("VALIDATION Iteration %d - Loss %.4E"  % (iteration_number, loss))
+        if iteration_number % self.visualize_validation_results_after == 0:
+            print("Visualizing")
+            self.visual_feedback_generator.add(iteration_number,  data)
+
 
     @overrides
     def run_testing_iteration(self, sess, summary_writer, iteration_number):
+        print("Not implemented")
+        assert False
 
         feeds = sess.run(self.testing_feeds)
         feed_dict = {
@@ -429,8 +466,8 @@ class BasicModel(ModelInterface):
             self._placeholder_col_adj_matrix : feeds[5],
         }
         loss, pcells, prows, pcols, ax, ay, az = sess.run([self.loss, self.predicted_cell_adj_matrix,
-                                       self.predicted_rows_adj_matrix, self.predicted_cols_adj_matrix, self.accuracy_x,
-                                       self.accuracy_y, self.accuracy_z], feed_dict = feed_dict)
+                                                           self.predicted_adj_matrix, self.predicted_cols_adj_matrix, self.accuracy_x,
+                                                           self.accuracy_y, self.accuracy_z], feed_dict = feed_dict)
 
 
         # [0] is for test
