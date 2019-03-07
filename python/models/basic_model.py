@@ -276,6 +276,10 @@ class BasicModel(ModelInterface):
         self.gt_rows_adj_matrix = truths[1]
         self.gt_cols_adj_matrix = truths[2]
 
+        temp =  tf.cast(self.gt_rows_adj_matrix, dtype=tf.float32)
+        temp = tf.reduce_sum(tf.reduce_mean(temp, axis=-1) * mask[:,:,0], axis=-1)/tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
+        temp = tf.reduce_mean(temp)
+
         accuracy_x = tf.cast(tf.equal(self.predicted_cell_adj_matrix, truths[0]), tf.float32) * mask
         accuracy_y = tf.cast(tf.equal(self.predicted_rows_adj_matrix, truths[1]), tf.float32) * mask
         accuracy_z = tf.cast(tf.equal(self.predicted_cols_adj_matrix, truths[2]), tf.float32) * mask
@@ -293,6 +297,7 @@ class BasicModel(ModelInterface):
 
 
         total_loss = loss_y
+        total_loss = tf.Print(total_loss, [temp],"Should be ~0.5: ")
         # total_loss = loss_x + loss_y + loss_z
         total_loss = tf.reduce_mean(total_loss, axis=-1)
         total_loss = tf.reduce_sum(total_loss, axis=-1) / tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)

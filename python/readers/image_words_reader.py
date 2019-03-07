@@ -11,7 +11,7 @@ class ImageWordsReader:
         self.num_max_vertices = num_max_vertices
         self.num_data_dims = num_data_dims
         self.num_batch = num_batch
-        self.shuffle_size = self.num_batch * 3 if shuffle_size is None else shuffle_size
+        self.shuffle_size = self.num_batch #* 3 if shuffle_size is None else shuffle_size
         self.max_width = max_width
         self.max_height = max_height
         self.max_word_length = max_words_length
