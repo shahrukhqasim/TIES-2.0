@@ -1,35 +1,101 @@
-[basic_conv_graph_acer]
+; This is only an example file. Don't make changes to it. Copy it to .ini file and make changes there.
+
+[basic_conv_graph]
+; Will not load the model if 1
+; Will also empty summary and visual feedback output paths
 from_scratch=1
-batch_size=2
-save_after_iterations=300
+
+; Batch size to use
+batch_size=30
+
+; Total number of iterations to train for. Feel free to keep it very high and manually stop the training once you are
+; satisfied
 train_for_iterations=20000000000
-learning_rate=0.0002
-validate_after=50
+
+; Learning rate for the optimizer (using Adam for now)
+learning_rate=0.0001
+
+; Without shuffling, only these number of samples will be tested
 num_testing_samples=20000
-reader_type=fixed_num_entries_reader_seeds_separate
 
-summary_path=/home/srq/Workspace/TrainOut/dummy_alpha_1/summary
-model_path=/home/srq/Workspace/TrainOut/dummy_alpha_1/model
-test_out_path=/home/srq/Workspace/TrainOut/dummy_alpha_1/test
+; Paths where to output summary, model and testing results
+; Will be created if they don't yet exist. Make sure you have the permissions
+summary_path=/media/all/shahrukhqasim/Tables/TrainOut/betaout/summary
+model_path=/media/all/shahrukhqasim/Tables/TrainOut/betaout/model
+test_out_path=/media/all/shahrukhqasim/Tables/TrainOut/betaout/test
 
-training_files_list=/home/srq/Datasets/dummy_sythetic_alpha/train_files.txt
-validation_files_list=/home/srq/Datasets/dummy_sythetic_alpha/train_files.txt
-test_files_list=/home/srq/Datasets/dummy_sythetic_alpha/train_files.txt
+
+; Text files containing full path of training, testing and validation tfrecords, one per line
+training_files_list=/media/all/shahrukhqasim/Tables/Datasets/betaset/train_files.txt
+validation_files_list=/media/all/shahrukhqasim/Tables/Datasets/betaset/val_files.txt
+test_files_list=/media/all/shahrukhqasim/Tables/Datasets/betaset/test_files.txt
+
+; Model string for the model factory
 model=basic_conv_graph
-profiler_output_file_name=/home/srq/Workspace/TrainOut/dummy_alpha_1/profiler
-visual_feedback_out_path=/home/srq/Workspace/TrainOut/dummy_alpha_1/visual_feedback
+
+; Where to output profiling data (not yet implemented)
+profiler_output_file_name=/media/all/shahrukhqasim/Tables/TrainOut/betaout/profiler
+
+; Where to generate visual feedback
+visual_feedback_out_path=/media/all/shahrukhqasim/Tables/TrainOut/betaout/visual_feedback
+
+; These are for the tfrecords config
+
+; Maximum number of vertices (for instance, words)
 max_vertices=900
-num_vertex_features=4
+
+; Vertex features (x, y, x2, y2, length of the word)
+num_vertex_features=5
+
+; The image dimensions in the tfrecords
 max_image_height=768
 max_image_width=1366
-max_words_len=30
-num_data_dims=3
 image_channels=1
+
+; Maximum number of characters per word (vertex)
+max_words_len=30
+
+; The index of respective features in the vertex features matrix (0 indexed)
 dim_vertex_x_position=0
 dim_vertex_y_position=1
 dim_vertex_x2_position=2
 dim_vertex_y2_position=3
-dim_num_vertices=0
-samples_per_vertex=6
+
+; The index of respective features in the global features matrix (0 indexed)
+
+; Number of vertices which are  actually in the sample (rest could be all zeros)
+dim_num_vertices=2
+
+; Number of total global features
 num_global_features=3
+
+; Index in the global features which represents image dimenions (rest of the image could  be all zeros)
+dim_width=1
+dim_height=0
+
+; Unknown? (remove it next time)
+num_data_dims=3
+
+; The variable scope of the model (will change how the variables are named in the saved model)
 variable_scope=basic_conv_graph_alpha_1
+
+; The following are training parameters
+
+; Number of samples to take for each of the vertex (more means more memory requirement)
+samples_per_vertex=6
+
+
+; Weight of losses, for cells, rows and cols respectively
+; No need to sum it to one, will be handled internally (could be floating points)
+loss_alpha=0
+loss_beta=4
+loss_gamma=0
+
+; Save the model to file after iterations
+save_after_iterations=500
+
+; Run validation iteration after
+validate_after=100
+
+; This has to be a multiple of validate_after otherwise it won't work
+visualize_validation_results_after=150
