@@ -39,31 +39,40 @@ from matplotlib import cm
 from matplotlib.colors import LogNorm
 import matplotlib.backends.backend_pdf
 from libs.configuration_manager import ConfigurationManager as gconfig
+import libs.plots as plots
+import subprocess
 
 
 
-def analyse():
+def analyse(args):
+    gconfig.init(args.input, args.config)
+    out_path = gconfig.get_config_param('test_out_path', 'str')
+    out_path = os.path.join(out_path, 'visualizations')
+    subprocess.call("mkdir -p %s" % (out_path), shell=True)
 
     store = []
-    with open(os.path.join(gconfig.get_config_param('test_out_path', 'str'), 'inference_output_files.txt')) as f:
+    inference_files = os.path.join(gconfig.get_config_param('test_out_path', 'str'), 'inference_output_files.txt')
+
+    sample_number = 0
+    with open(inference_files) as f:
         content = f.readlines()
         for i in content:
             with gzip.open(i.strip()) as f:
                 data = pickle.load(f)
                 for j in data:
-                    data_dict = j
+                    result = j
+                    image = result['image']
+                    ground_truths = result['sampled_ground_truths']
+                    predictions = result['sampled_predictions']
+                    indices = result['sampled_indices']
+                    global_features = result['global_features']
+                    vertex_features = result['vertex_features']
 
-                    # TODO: Hassan - you can get everything like this
-                    vertex_features  = data_dict['vertex_features']
-                    image  = data_dict['image']
-                    global_features  = data_dict['global_features']
-                    gt_cells_adj_matrix  = data_dict['gt_cells_adj_matrix']
-                    gt_rows_adj_matrix  = data_dict['gt_rows_adj_matrix']
-                    gt_cols_adj_matrix  = data_dict['gt_cols_adj_matrix']
-                    predicted_cells_adj_matrix  = data_dict['predicted_cells_adj_matrix']
-                    predicted_rows_adj_matrix  = data_dict['predicted_rows_adj_matrix']
-                    predicted_cols_adj_matrix  = data_dict['predicted_cols_adj_matrix']
-                    store.append(do_something_on_data())
+                    print(indices[0].shape)
+                    print(indices[0])
+                    plots.plot_few(out_path, sample_number, result)
+                    sample_number += 1
+
 
     # TODO: Hassan
     # Iterate and calculate accuracy etc
@@ -73,3 +82,10 @@ def analyse():
 
 if __name__ != '__main__':
     print("Can't import  this as a module")
+
+parser = argparse.ArgumentParser(description='Run analysis')
+parser.add_argument('input', help="Path to config file")
+parser.add_argument('config', help="Config section within the config file")
+args = parser.parse_args()
+
+analyse(args)

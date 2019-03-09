@@ -102,12 +102,14 @@ class TableAdjacencyParsingIterator (Iterator):
     @overrides
     def test(self):
         # Use batch size of 1 for inference time
-        gconfig.set_config_param("batch_size",1)
+        gconfig.set_config_param("batch_size","1")
         self.initialize()
         init = [tf.global_variables_initializer(), tf.local_variables_initializer()]
         model = self.model
         model.initialize(training=False)
         saver = model.get_saver()
+
+        num_testing_samples = gconfig.get_config_param("num_testing_samples", "int")
 
         with tf.Session() as sess:
             sess.run(init)
@@ -120,10 +122,12 @@ class TableAdjacencyParsingIterator (Iterator):
             iteration_number = 0
 
             print("Starting iterations")
-            while iteration_number < self.train_for_iterations:
+            while iteration_number < num_testing_samples:
                 model.run_testing_iteration(sess, summary_writer, iteration_number)
 
                 iteration_number += 1
+
+            model.wrap_up()
 
             # Stop the threads
             coord.request_stop()

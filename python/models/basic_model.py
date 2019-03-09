@@ -8,6 +8,7 @@ from ops.ties import *
 import os
 import cv2
 from models.conv_segment import BasicConvSegment
+from models.dgcnn_segment import DgcnnSegment
 from libs.inference_output_streamer import InferenceOutputStreamer
 from libs.visual_feedback_generator import VisualFeedbackGenerator
 import random
@@ -15,9 +16,18 @@ import numpy as np
 from libs.helpers import *
 
 class BasicModel(ModelInterface):
+    def set_conv_segment(self, conv_segment):
+        self.conv_segment = conv_segment
+
+    def set_graph_segment(self, dgcnn_segment):
+        self.graph_segment = dgcnn_segment
+
     @overrides
     def initialize(self, training=True):
         self.max_vertices = gconfig.get_config_param("max_vertices", "int")
+        if not training:
+            gconfig.set_config_param("samples_per_vertex", str(self.max_vertices))
+
         self.num_vertex_features = gconfig.get_config_param("num_vertex_features", "int")
         self.image_height = gconfig.get_config_param("max_image_height", "int")
         self.image_width = gconfig.get_config_param("max_image_width", "int")
@@ -37,6 +47,8 @@ class BasicModel(ModelInterface):
         self.validation_files_list = gconfig.get_config_param("test_files_list", "str")
         self.test_files_list = gconfig.get_config_param("validation_files_list", "str")
         self.learning_rate = gconfig.get_config_param("learning_rate", "float")
+
+        self.is_sampling_balanced = gconfig.get_config_param("is_sampling_balanced", "bool")
 
         self.visual_feedback_out_path = gconfig.get_config_param("visual_feedback_out_path", type="str")
         self.test_output_path = gconfig.get_config_param("test_out_path", type="str")
@@ -66,12 +78,16 @@ class BasicModel(ModelInterface):
                                                       self.max_vertices, self.num_vertex_features,
                                                       self.image_height, self.image_width, self.image_channels,
                                                       self.max_words_len, self.num_batch)
-            self.testing_feeds = self.testing_reader.get_feeds()
+            self.testing_feeds = self.testing_reader.get_feeds(shuffle=False)
 
             self.inference_output_streamer = InferenceOutputStreamer(self.test_output_path)
             self.inference_output_streamer.start_thread()
 
-        self.conv_segment = BasicConvSegment()
+        if not hasattr(self, 'conv_segment'):
+            self.conv_segment = BasicConvSegment()
+
+        if not hasattr(self, 'graph_segment'):
+            self.graph_segment = DgcnnSegment()
 
         self.build_computation_graphs()
 
@@ -113,59 +129,6 @@ class BasicModel(ModelInterface):
             "placeholder_col_adj_matrix" : _placeholder_col_adj_matrix,
         }
 
-    def dgcnn_model(self, feat):
-        feat = tf.layers.batch_normalization(feat, momentum=0.8, training=self.training)
-
-        feat = high_dim_dense(feat, 64)  # global transform to 3D
-
-        feat = edge_conv_layer(feat, 10, [64, 64, 64])
-        feat_g = layer_global_exchange(feat)
-
-        feat = tf.layers.dense(tf.concat([feat, feat_g], axis=-1),
-                               64, activation=tf.nn.relu)
-
-        feat1 = edge_conv_layer(feat, 10, [64, 64, 64])
-        feat1_g = layer_global_exchange(feat1)
-        feat1 = tf.layers.dense(tf.concat([feat1, feat1_g], axis=-1),
-                                64, activation=tf.nn.relu)
-
-        feat2 = edge_conv_layer(feat1, 10, [64, 64, 64])
-        feat2_g = layer_global_exchange(feat2)
-        feat2 = tf.layers.dense(tf.concat([feat2, feat2_g], axis=-1),
-                                64, activation=tf.nn.relu)
-
-        feat3 = edge_conv_layer(feat2, 10, [64, 64, 64])
-
-        # global_feat = tf.layers.dense(feat2,1024,activation=tf.nn.relu)
-        # global_feat = max_pool_on_last_dimensions(global_feat, skip_first_features=0, n_output_vertices=1)
-        # print('global_feat',global_feat.shape)
-        # global_feat = tf.tile(global_feat,[1,feat.shape[1],1])
-        # print('global_feat',global_feat.shape)
-
-        feat = tf.concat([feat, feat1, feat2, feat_g, feat1_g, feat2_g, feat3], axis=-1)
-        feat = tf.layers.dense(feat, 128, activation=tf.nn.relu)
-        feat = tf.layers.dense(feat, 128, activation=tf.nn.relu)
-        return feat
-
-    def build_graph_segment(self, vertices_combined_features):
-        x = vertices_combined_features
-        for i in range(4):
-            # x = layer_global_exchange(x)
-            x = high_dim_dense(x, 256, activation=tf.nn.relu)
-            x = high_dim_dense(x, 256, activation=tf.nn.relu)
-            x = high_dim_dense(x, 256, activation=tf.nn.relu)
-
-            # x = layer_GarNet(x, n_aggregators=10, n_filters=256, n_propagate=256)
-
-            x = layer_GravNet(x,
-                              n_neighbours=10,
-                              n_dimensions=10,
-                              n_filters=256,
-                              n_propagate=256)
-            # x = tf.layers.batch_normalization(x, momentum=0.6, training=True) # TODO: Fix training parameter
-
-        x = high_dim_dense(x, 256, activation=tf.nn.relu)
-        return high_dim_dense(x, 256, activation=tf.nn.relu)
 
     def get_distribution_for_mote_carlo_sampling(self, placeholders):
         x = tf.ones(shape=(self.num_batch, self.max_vertices), dtype=tf.float32) # [batch, max_vertices]
@@ -201,24 +164,19 @@ class BasicModel(ModelInterface):
 
     def do_monte_carlo_sampling(self, graph, gt_matrix):
         if self.training:
-            distribution = self.get_balanced_distribution_for_mote_carlo_sampling(gt_matrix)
-            x = tf.distributions.Categorical(probs=distribution).sample(sample_shape=(self.samples_per_vertex))  # [batch, max_vertices] = [1, samples, batch, max_vertices]
-            x = tf.transpose(x, perm=[1,2,0]) # [batch, max_vertices, samples_per_vertex]
-            # if self.tile_samples:
-            #     x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(
-            #         self.placeholders_dict)).sample(sample_shape=(1, self.samples_per_vertex))  # [batch, max_vertices] = [1, samples, batch, max_vertices]
-            #     x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
-            #     x = tf.tile(x, multiples=[1, self.max_vertices, 1])
-            # else:
-            #     x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(self.placeholders_dict)).sample(sample_shape=(self.max_vertices, self.samples_per_vertex))
-            #     x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
-            #     print("Visual feedback not implemented for this method!")
-            #     assert False
+            if self.is_sampling_balanced:
+                distribution = self.get_balanced_distribution_for_mote_carlo_sampling(gt_matrix)
+                x = tf.distributions.Categorical(probs=distribution).sample(sample_shape=(self.samples_per_vertex))  # [batch, max_vertices] = [1, samples, batch, max_vertices]
+                x = tf.transpose(x, perm=[1,2,0]) # [batch, max_vertices, samples_per_vertex]
+            else:
+                x = tf.distributions.Categorical(probs=self.get_distribution_for_mote_carlo_sampling(
+                    self.placeholders_dict)).sample(sample_shape=(1, self.samples_per_vertex))  # [batch, max_vertices] = [1, samples, batch, max_vertices]
+                x = tf.transpose(x, perm=[2,0,1]) # [batch, max_vertices, samples_per_vertex]
+                x = tf.tile(x, multiples=[1, self.max_vertices, 1])
         else:
             # TODO: Could be  made faster since the subsequent gather operations can be avoided now
-            x = tf.tile(tf.range(0, self.max_vertices)[tf.newaxis, :, tf.newaxis], multiples=[self.num_batch, 1,
-                                                                                              self.samples_per_vertex])
-
+            x = tf.tile(tf.range(0, self.max_vertices)[tf.newaxis, tf.newaxis, :], multiples=[self.num_batch,
+                                                                                              self.samples_per_vertex, 1])
         samples = x
 
         y = tf.range(0, self.num_batch)[...,tf.newaxis] # [batch, 1]
@@ -243,10 +201,19 @@ class BasicModel(ModelInterface):
         return samples, x, tf.gather_nd(gt_matrix, indexing_tensor_for_adj_matrices)
 
     def reduce_mean_variable_vertices(self, x):
-        x = tf.reduce_mean(x, axis=-1)
+        if self.training:
+            x = tf.reduce_mean(x, axis=-1)
+        else:
+            placeholder_num_features = self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices]
+            vv = tf.cast(tf.sequence_mask(placeholder_num_features, maxlen=self.max_vertices)[:, tf.newaxis, :], tf.float32)
+            x =  x * vv
+            x = tf.reduce_sum(x, axis=-1)
+            x = x / tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
+            # print(x.shape)
+            # 0/0
+
         x = tf.reduce_sum(x, axis=-1) / tf.cast(self.placeholders_dict['placeholder_global_features'][:, self.dim_num_vertices], tf.float32)
         x = tf.reduce_mean(x)
-
         return x
 
     def build_classification_model(self, classification_head):
@@ -325,23 +292,27 @@ class BasicModel(ModelInterface):
         summary_validation_accuracy_rows =  tf.summary.scalar('validation_loss_rows', accuracies[1])
         summary_validation_accuracy_cols =  tf.summary.scalar('validation_loss_cols', accuracies[2])
 
+        self.test_x = accuracies[2]
+
         self.graph_summaries_training = tf.summary.merge([summary_training_loss_cells, summary_training_loss_rows, summary_training_loss_cols,
                                       summary_training_accuracy_cells, summary_training_accuracy_rows, summary_training_accuracy_cols])
 
         self.graph_summaries_validation = tf.summary.merge([summary_validation_loss_cells, summary_validation_loss_rows, summary_validation_loss_cols,
                                       summary_validation_accuracy_cells, summary_validation_accuracy_rows, summary_validation_accuracy_cols])
 
-        alpha = gconfig.get_config_param("loss_alpha", "float")
-        beta = gconfig.get_config_param("loss_beta", "float")
-        gamma = gconfig.get_config_param("loss_gamma", "float")
+        _alpha = gconfig.get_config_param("loss_alpha", "float")
+        _beta = gconfig.get_config_param("loss_beta", "float")
+        _gamma = gconfig.get_config_param("loss_gamma", "float")
 
-        alpha = alpha / (alpha+beta+gamma)
-        beta = beta / (alpha+beta+gamma)
-        gamma = gamma / (alpha+beta+gamma)
+        alpha = _alpha / (_alpha+_beta+_gamma)
+        beta = _beta / (_alpha+_beta+_gamma)
+        gamma = _gamma / (_alpha+_beta+_gamma)
 
         total_loss = alpha * losses[0] + beta * losses[1] + gamma * losses[2]
 
-        self.graph_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(total_loss)
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+        with tf.control_dependencies(update_ops):
+            self.graph_optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate).minimize(total_loss)
 
         self.graph_prints = tf.print("Accuracy - cells:", accuracies[0], "rows:", accuracies[1], "cols:", accuracies[2], "\n",
                           "Loss     - cells:", losses[0], "rows:", losses[1], "cols:", losses[2], "\n",
@@ -351,7 +322,6 @@ class BasicModel(ModelInterface):
         self.graph_gt_sampled_adj_matrices = gt_sampled_adj_matrices
         self.graph_predicted_sampled_adj_matrices = predicted_sampled_adj_matrices
         self.graph_sampled_indices = samples
-
 
 
     def build_computation_graphs(self):
@@ -384,7 +354,8 @@ class BasicModel(ModelInterface):
             vertices_combined_features = tf.concat(
                 (_graph_vertex_features, gathered_image_features), axis=-1)
 
-            graph_features = self.dgcnn_model(vertices_combined_features)
+            self.graph_segment.training=self.training
+            graph_features = self.graph_segment.build_network_segment(vertices_combined_features)
 
             self.build_classification_segments(graph_features, placeholders)
 
@@ -453,9 +424,6 @@ class BasicModel(ModelInterface):
 
     @overrides
     def run_testing_iteration(self, sess, summary_writer, iteration_number):
-        print("Not implemented")
-        assert False
-
         feeds = sess.run(self.testing_feeds)
         feed_dict = {
             self._placeholder_vertex_features : feeds[0],
@@ -465,29 +433,28 @@ class BasicModel(ModelInterface):
             self._placeholder_row_adj_matrix : feeds[4],
             self._placeholder_col_adj_matrix : feeds[5],
         }
-        loss, pcells, prows, pcols, ax, ay, az = sess.run([self.loss, self.predicted_cell_adj_matrix,
-                                                           self.predicted_adj_matrix, self.predicted_cols_adj_matrix, self.accuracy_x,
-                                                           self.accuracy_y, self.accuracy_z], feed_dict = feed_dict)
 
 
-        # [0] is for test
-        feed_output = {
-            "vertex_features" : feeds[0][0],
-            "image" : feeds[1][0],
-            "global_features" : feeds[2][0],
-            "gt_cells_adj_matrix" : feeds[3][0],
-            "gt_rows_adj_matrix" : feeds[4][0],
-            "gt_cols_adj_matrix" : feeds[5][0],
-            "predicted_cells_adj_matrix" : pcells[0],
-            "predicted_rows_adj_matrix" : prows[0],
-            "predicted_cols_adj_matrix" : pcols[0]
+        print("Testing Iteration %d:" % iteration_number)
+        ops_to_run = self.graph_predicted_sampled_adj_matrices + self.graph_gt_sampled_adj_matrices + \
+            self.graph_sampled_indices + [self.graph_prints, self.test_x, self.graph_summaries_training]
+        ops_result = sess.run(ops_to_run, feed_dict = feed_dict)
+
+        vv =  ops_result[-2]
+
+        summary_writer.add_summary(ops_result[-1], iteration_number)
+
+        result = {
+            'image': feeds[1][0],
+            'sampled_ground_truths': [ops_result[3][0], ops_result[4][0], ops_result[5][0]],
+            'sampled_predictions': [ops_result[0][0], ops_result[1][0], ops_result[2][0]],
+            'sampled_indices': [ops_result[6][0], ops_result[7][0], ops_result[8][0]],
+            'global_features': feeds[2][0],
+            'vertex_features': feeds[0][0],
         }
 
-        print("Iteration %d - Loss %.4E %.3f %.3f %.3f" % (iteration_number, loss, ax, ay, az))
-
-        self.inference_output_streamer.add(feed_output)
-
-        print("TESTING Iteration %d - Loss %.4E"  % (iteration_number, loss))
+        # if vv==1:
+        self.inference_output_streamer.add(result)
 
     def sanity_preplot(self, sess, summary_writer):
         feeds = sess.run(self.validation_feeds)
@@ -536,5 +503,9 @@ class BasicModel(ModelInterface):
 
         cv2.imwrite(os.path.join(self.visual_feedback_out_path, 'sanity_boxes.png'), image)
 
-
+    def wrap_up(self):
+        if self.training:
+            pass
+        else:
+            self.inference_output_streamer.close()
 
