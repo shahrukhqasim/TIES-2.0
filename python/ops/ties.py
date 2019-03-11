@@ -58,3 +58,36 @@ def edge_conv_layer(vertices_in, num_neighbors=30,
     vertex_out = aggregation_function(edge, axis=2)
 
     return vertex_out
+
+
+def layer_GravNet2(vertices_in,
+                  n_neighbours,
+                  n_dimensions,
+                  n_filters,
+                  n_propagate):
+    vertices_prop = high_dim_dense(vertices_in, n_propagate, activation=None)
+    neighb_dimensions = high_dim_dense(vertices_in, n_dimensions, activation=None)  # BxVxND,
+
+    indexing, distance = indexing_tensor(neighb_dimensions, n_neighbours)
+
+    net = tf.gather_nd(vertices_prop, indexing)  # BxVxNxF
+
+    distance_scale = 1 + tf.nn.softmax(-distance)[..., tf.newaxis]
+
+    net = distance_scale * net
+    batch, max_vertices, _, _ = net.shape
+
+    net = tf.reduce_mean(net, axis=-1)
+    # net = tf.reshape(net, shape=(batch, max_vertices, -1))
+    net =  high_dim_dense(net, n_filters, activation=None)
+    print(net.shape)
+    return net
+    0/0
+    return net
+    print(net.shape, distance.shape)
+    0/0
+
+    collapsed = collapse_to_vertex(indexing, distance, vertices_prop)
+    updated_vertices = tf.concat([vertices_in, collapsed], axis=-1)
+
+    return high_dim_dense(updated_vertices, n_filters, activation=None)
