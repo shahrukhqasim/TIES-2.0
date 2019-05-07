@@ -14,6 +14,8 @@ from libs.visual_feedback_generator import VisualFeedbackGenerator
 import random
 import numpy as np
 from libs.helpers import *
+import time
+
 
 class BasicModel(ModelInterface):
     def set_conv_segment(self, conv_segment):
@@ -436,10 +438,11 @@ class BasicModel(ModelInterface):
 
 
         print("Testing Iteration %d:" % iteration_number)
+        start=time.time()
         ops_to_run = self.graph_predicted_sampled_adj_matrices + self.graph_gt_sampled_adj_matrices + \
             self.graph_sampled_indices + [self.graph_prints, self.test_x, self.graph_summaries_training]
         ops_result = sess.run(ops_to_run, feed_dict = feed_dict)
-
+        print('\n\nTime taken:',time.time()-start)
         vv =  ops_result[-2]
 
         summary_writer.add_summary(ops_result[-1], iteration_number)
@@ -454,6 +457,7 @@ class BasicModel(ModelInterface):
         }
 
         # if vv==1:
+
         self.inference_output_streamer.add(result)
 
     def sanity_preplot(self, sess, summary_writer):

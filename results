@@ -1,0 +1,351 @@
+fastcnn:
+
+GT in Pred : 
+Diffculty level:  1
+Total images: 99
+cells :  0.9999185402411208
+rows :  0.9988776655443322
+cols :  0.995751162417829
+Diffculty level:  2
+Total images: 324
+cells :  0.999465273986996
+rows :  0.9963917059096798
+cols :  0.9942264354301393
+Diffculty level:  3
+Total images: 329
+cells :  0.9984954150219418
+rows :  0.9681596695118058
+cols :  0.8761591161287211
+Diffculty level:  4
+Total images: 248
+cells :  0.9994801435609089
+rows :  0.9767672545275723
+cols :  0.9000160010240654
+
+
+Pred not in GT : 
+Diffculty level:  1
+Total images: 99
+cells :  8.145975887911372e-05
+rows :  0.005002405002405002
+cols :  0.16700816018997833
+Diffculty level:  2
+Total images: 324
+cells :  0.0006080464850525019
+rows :  0.030533936528939223
+cols :  0.14138560266692082
+Diffculty level:  3
+Total images: 329
+cells :  0.0012717763273513466
+rows :  0.10415695767340048
+cols :  0.32094306446017906
+Diffculty level:  4
+Total images: 248
+cells :  0.00048513585663356403
+rows :  0.06309050615499107
+cols :  0.2635545602931751
+
+Difficulty level: 1  M value: 0.42424242424242425
+Difficulty level: 2  M value: 0.5462962962962963
+Difficulty level: 3  M value: 0.1094224924012158
+Difficulty level: 4  M value: 0.3185483870967742
+
+
+______________________________________
+
+Diffculty level:  1
+Total images: 99
+cells :  0.9494949494949495
+rows :  0.9494949494949495
+cols :  0.7474747474747475
+Diffculty level:  2
+Total images: 324
+cells :  0.9012345679012346
+rows :  0.9012345679012346
+cols :  0.7438271604938271
+Diffculty level:  3
+Total images: 329
+cells :  0.8966565349544073
+rows :  0.5167173252279635
+cols :  0.2948328267477204
+Diffculty level:  4
+Total images: 248
+cells :  0.8870967741935484
+rows :  0.6290322580645161
+cols :  0.4879032258064516
+
+______________________________________
+
+
+
+gravnet:
+
+GT in Pred : 
+Diffculty level:  1
+Total images: 99
+cells :  0.9981367281988441
+rows :  1.0
+cols :  0.9974747474747475
+Diffculty level:  2
+Total images: 324
+cells :  0.9981290142391698
+rows :  0.9997625830959164
+cols :  0.9947236919459141
+Diffculty level:  3
+Total images: 329
+cells :  0.9922735567142296
+rows :  0.9565426051390649
+cols :  0.8621194577121628
+Diffculty level:  4
+Total images: 248
+cells :  0.9957995563236562
+rows :  0.9684024986978025
+cols :  0.9049427163338452
+
+
+Pred not in GT : 
+Diffculty level:  1
+Total images: 99
+cells :  0.0015710841435044743
+rows :  0.0018365472910927456
+cols :  0.06561855652764743
+Diffculty level:  2
+Total images: 324
+cells :  0.0017197895570452207
+rows :  0.007899119631934104
+cols :  0.090191692737989
+Diffculty level:  3
+Total images: 329
+cells :  0.005790201429043382
+rows :  0.10196077946787116
+cols :  0.33623880504414894
+Diffculty level:  4
+Total images: 248
+cells :  0.002839277804678842
+rows :  0.07812327963391516
+cols :  0.25280880305985176
+Difficulty level: 1  M value: 0.6565656565656566
+Difficulty level: 2  M value: 0.5864197530864198
+Difficulty level: 3  M value: 0.13069908814589665
+Difficulty level: 4  M value: 0.31451612903225806
+
+______________________________________
+
+new new dgcnn:
+
+GT in Pred : 
+Diffculty level:  1
+Total images: 99
+cells :  0.9987923651763728
+rows :  0.9990817263544536
+cols :  1.0
+Diffculty level:  2
+Total images: 324
+cells :  0.9985871086368658
+rows :  0.9990997942386831
+cols :  0.9983110425240055
+Diffculty level:  3
+Total images: 329
+cells :  0.9990077240728316
+rows :  0.9808846461760817
+cols :  0.9407379263762243
+Diffculty level:  4
+Total images: 248
+cells :  0.9987733023095966
+rows :  0.9906579498669157
+cols :  0.9434459805427547
+
+
+Pred not in GT : 
+Diffculty level:  1
+Total images: 99
+cells :  0.0007704766949455971
+rows :  0.004642383430262218
+cols :  0.007988980716253443
+Diffculty level:  2
+Total images: 324
+cells :  0.0008861144923358507
+rows :  0.00229031941994905
+cols :  0.010912141699178738
+Diffculty level:  3
+Total images: 329
+cells :  0.0006710054378540868
+rows :  0.048030572661562604
+cols :  0.14566545812309514
+Diffculty level:  4
+Total images: 248
+cells :  0.0007943035909798076
+rows :  0.0439460570241361
+cols :  0.10617862088628216
+Difficulty level: 1  M value: 0.9696969696969697
+Difficulty level: 2  M value: 0.9475308641975309
+Difficulty level: 3  M value: 0.5288753799392097
+Difficulty level: 4  M value: 0.6854838709677419
+
+______________________________________
+
+new dgcnn:
+
+GT in Pred : 
+Diffculty level:  1
+Total images: 99
+cells :  0.9985721889798671
+rows :  0.9993686868686869
+cols :  1.0
+Diffculty level:  2
+Total images: 324
+cells :  0.9988129234963364
+rows :  0.9964931960438496
+cols :  0.9993827160493828
+Diffculty level:  3
+Total images: 329
+cells :  0.9977150508042459
+rows :  0.9696406259275023
+cols :  0.9239578810247504
+Diffculty level:  4
+Total images: 248
+cells :  0.9982425651135687
+rows :  0.9843746649723879
+cols :  0.9365847414234509
+
+
+Pred not in GT : 
+Diffculty level:  1
+Total images: 99
+cells :  0.0008725713718065559
+rows :  0.006275995246583482
+cols :  0.009024309024309023
+Diffculty level:  2
+Total images: 324
+cells :  0.0009197105741609417
+rows :  0.012478931038299227
+cols :  0.012537745176634068
+Diffculty level:  3
+Total images: 329
+cells :  0.001574447216910037
+rows :  0.07828365465175799
+cols :  0.17068331029511588
+Diffculty level:  4
+Total images: 248
+cells :  0.0010774355426416825
+rows :  0.10425587250478814
+cols :  0.1287522006509198
+Difficulty level: 1  M value: 0.9494949494949495
+Difficulty level: 2  M value: 0.9104938271604939
+Difficulty level: 3  M value: 0.3829787234042553
+Difficulty level: 4  M value: 0.6290322580645161
+
+______________________________________
+
+old dgcnn:
+
+GT in Pred : 
+Diffculty level:  1
+Total images: 99
+cells :  0.9987954130409418
+rows :  1.0
+cols :  0.9930856180856181
+Diffculty level:  2
+Total images: 324
+cells :  0.9985303165962359
+rows :  0.9939190953079843
+cols :  0.993001665686851
+Diffculty level:  3
+Total images: 329
+cells :  0.9976458689949381
+rows :  0.9572018126796418
+cols :  0.8796509383895402
+Diffculty level:  4
+Total images: 248
+cells :  0.9980733465515578
+rows :  0.9653794968340748
+cols :  0.903616231438812
+
+
+Pred not in GT : 
+Diffculty level:  1
+Total images: 99
+cells :  0.0006787763421925976
+rows :  0.004208754208754209
+cols :  0.03795439969682394
+Diffculty level:  2
+Total images: 324
+cells :  0.0011810310214533236
+rows :  0.014523801751828928
+cols :  0.03381970395859284
+Diffculty level:  3
+Total images: 329
+cells :  0.0018942680665676914
+rows :  0.09239695083479256
+cols :  0.2117465319213042
+Diffculty level:  4
+Total images: 248
+cells :  0.0014429884177229529
+rows :  0.09343875337284382
+cols :  0.17109860777623936
+Difficulty level: 1  M value: 0.7474747474747475
+Difficulty level: 2  M value: 0.7438271604938271
+Difficulty level: 3  M value: 0.2948328267477204
+Difficulty level: 4  M value: 0.4879032258064516
+
+
+
+____________________________________________
+fastcnn_conv_1
+
+GT in Pred : 
+Diffculty level:  1
+Total images: 99
+cells :  0.9990114299222458
+rows :  0.9993686868686869
+cols :  0.9974747474747475
+Diffculty level:  2
+Total images: 324
+cells :  0.9993177397924649
+rows :  0.9957153675018597
+cols :  0.9912098275524202
+Diffculty level:  3
+Total images: 329
+cells :  0.9987735120472725
+rows :  0.9518992549655878
+cols :  0.8407198340329035
+Diffculty level:  4
+Total images: 248
+cells :  0.9990855567633007
+rows :  0.9670214072639357
+cols :  0.8877192140296977
+
+
+Pred not in GT : 
+Diffculty level:  1
+Total images: 99
+cells :  0.0007342727181936209
+rows :  0.015261276156998082
+cols :  0.10730355503082777
+Diffculty level:  2
+Total images: 324
+cells :  0.0007169953779069829
+rows :  0.04502896590847711
+cols :  0.1451378083921189
+Diffculty level:  3
+Total images: 329
+cells :  0.0009013567837802681
+rows :  0.12638803260900663
+cols :  0.3639620047294821
+Diffculty level:  4
+Total images: 248
+cells :  0.0008936508524252726
+rows :  0.10617637257160088
+cols :  0.27424633662774084
+
+
+Difficulty level: 1  M value: 0.5858585858585859
+Difficulty level: 2  M value: 0.49691358024691357
+Difficulty level: 3  M value: 0.060790273556231005
+Difficulty level: 4  M value: 0.3064516129032258
+
+____________________________________________
+
+new fastcnn_conv
+
+

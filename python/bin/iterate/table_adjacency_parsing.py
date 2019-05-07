@@ -1,7 +1,10 @@
+import os
+import sys
+sys.path.append(os.path.join(os.path.join(os.path.dirname(__file__),'../../')))
+
 import argparse
 from iterators.table_adjacency_parsing_iterator import TableAdjacencyParsingIterator
 from libs.configuration_manager import ConfigurationManager as gconfig
-
 
 if __name__ != "__main__":
     print("Execute as a python script. This is not an importable module.")

@@ -3,6 +3,7 @@ import tensorflow as tf
 from caloGraphNN import *
 from ops.ties import *
 
+
 class DgcnnSegment(NetworkSegmentInterface):
     def build_network_segment(self, feat):
         feat = tf.layers.batch_normalization(feat, momentum=0.8, training=self.training)
