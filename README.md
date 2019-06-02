@@ -113,10 +113,16 @@ $ export PYTHONPATH=$PYTHONPATH:/home/shahrukhqasim/TIES-2.0/python
 
 You can also add `.` to the `$PYTHONPATH` if you know you will always run the commands from inside of `python` directory.
 
-It is advised you make a `sh` file with these export commands and a command which activates the virtual environment. I use the following sourcing file:
+It is advised you make a `sh` file with these export commands and a command which activates the virtual environment.
+ I use the following sourcing file (`ties.sh`):
 ```
 source ~/Envs/h3/bin/activate
 cd /Users/shahrukhqasim/Workspace/TIES-2.0/python
 export PYTHONPATH=$PYTHONPATH:/Users/shahrukhqasim/Workspace/caloGraphNN:/Users/shahrukhqasim/Workspace/TIES-2.0
 ```
 
+I source it every time I want to run training or inference using:
+```
+$ source ties.sh
+
+```
