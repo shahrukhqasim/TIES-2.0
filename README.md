@@ -53,8 +53,8 @@ can say anything that is done iteratively mostly on the GPU. So if there is an `
 to an entity which handles training, testing etc.
 
 ## Preparation
-1. Prepare the dataset. For this, you require to divide the dataset into three different sections, test, train and validation.
- Test set will be used to run the analysis after training is done. Gradient will be run on train set. Validation set is
+1. Prepare the dataset. For this, you are required to divide the dataset into three different sections, test, train and validation.
+ Test set will be used to run the analysis after training is done. Backpropagation will be run on the train set. Validation set is
   used to produce plots for tensorboard to monitor performance of the network.
 2. The dataset files have to be in `tfrecords` format. Make a new file called `train_files.txt`. It should contain full paths of all the training tfrecords files. For example:
     ```
