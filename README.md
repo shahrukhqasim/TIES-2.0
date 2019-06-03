@@ -11,11 +11,11 @@ ICDAR 2019. To cite the paper, use:
   author    = {Qasim, Shah Rukh and Mahmood, Hassan and Shafait, Faisal},
   title     = {Rethinking Table Parsing using Graph Neural Networks},
   journal   = {Accepted into ICDAR 2019},
-  volume    = {abs/xxxx.xxxxx},
+  volume    = {abs/1905.13391},
   year      = {2019},
-  url       = {https://arxiv.org/abs/xxxx.xxxxx},
+  url       = {https://arxiv.org/abs/1905.13391},
   archivePrefix = {arXiv},
-  eprint    = {xxxx.xxxxx},
+  eprint    = {1905.13391},
 }
 ```
 
