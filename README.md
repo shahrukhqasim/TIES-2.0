@@ -24,9 +24,14 @@ We are still working to improve a few technical details for your convenience. We
 Expect them to be done by June 15, 2019. We are also working to improve dataset format for easier understanding.
 
 ## Dataset
-Partial test dataset can be found [here](https://drive.google.com/drive/folders/18QyBB1pavj_xCsTyCR6XC_AA525nZaVZ?usp=sharing
-). We are uploading rest of the dataset. The current format of the dataset is `tfrecords`. This dataset is compatible with
-this repository. However, we are working on improving the format; we'll publish once it is done.
+Partial dataset which was used for test can be found [here](https://drive.google.com/drive/folders/18QyBB1pavj_xCsTyCR6XC_AA525nZaVZ?usp=sharing
+). We are uploading rest of the dataset. The current format of the dataset is `tfrecords`.
+
+In the meantime, if you want to generate the dataset, head on to the following repository:
+
+
+[github.com/hassan-mahmood/Structural_Analysis](https://github.com/hassan-mahmood/Structural_Analysis)
+
 
 ## Development note
 The project is divided into language parts, `python` and `cpp`, for python and C++ respectively. There is nothing in the
@@ -126,3 +131,8 @@ I source it every time I want to run training or inference using:
 $ source ties.sh
 
 ```
+
+
+## Coming soon
+
+Training data uploaded
