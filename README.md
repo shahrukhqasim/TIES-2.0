@@ -129,10 +129,10 @@ export PYTHONPATH=$PYTHONPATH:/Users/shahrukhqasim/Workspace/caloGraphNN:/Users/
 I source it every time I want to run training or inference using:
 ```
 $ source ties.sh
-
 ```
 
 
 ## Coming soon
 
-Training data uploaded
+1. Training data uploaded
+2. Trained models
