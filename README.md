@@ -3,7 +3,7 @@
 TIES was my undergraduate thesis, Table Information Extraction System. I picked the name from there and made it 2.0
  from there.
  
- This is a repository containing source code for the arxiv paper xxxx.xxxxx ([link](https://www.google.com)). This paper has been accepted into 
+ This is a repository containing source code for the arxiv paper 1905.13391 ([link](https://arxiv.org/pdf/1905.13391.pdf)). This paper has been accepted into 
 ICDAR 2019. To cite the paper, use:
 
 ```
