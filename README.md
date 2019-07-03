@@ -9,7 +9,7 @@ ICDAR 2019. To cite the paper, use:
 ```
 @article{rethinkingGraphs,
   author    = {Qasim, Shah Rukh and Mahmood, Hassan and Shafait, Faisal},
-  title     = {Rethinking Table Parsing using Graph Neural Networks},
+  title     = {Rethinking Table Recognition using Graph Neural Networks},
   journal   = {Accepted into ICDAR 2019},
   volume    = {abs/1905.13391},
   year      = {2019},
