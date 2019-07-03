@@ -75,7 +75,7 @@ So, for instance, you make different configs for `DGCNN`, `GravNet` and `Convolu
 ## Training
 To run the training, you need to issue the following command:
 
-```$ python bin/iterate/table_adjacency_parsing path/to/the/config/file config```
+```$ python bin/iterate/table_adjacency_parsing.py path/to/the/config/file config```
 
 While you are running the training, you can monitor using tensorboard. The paths are to be set into the config file as described in the previous step. Use the following command to run the tensorboard:
 
@@ -88,7 +88,7 @@ You can monitor the performance after that in your browser. The port number will
 ## Inference
 You first need to run inference which will generate `bin` files in numpy pickle format.
 
-```$ python bin/iterate/table_adjacency_parsing path/to/the/config/file config --test True```
+```$ python bin/iterate/table_adjacency_parsing.py path/to/the/config/file config --test True```
 
 ```
 TODO: Analaysis code and further documentation is coming.
