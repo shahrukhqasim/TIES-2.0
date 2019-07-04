@@ -83,7 +83,7 @@ variable_scope=basic_conv_graph_alpha_1
 
 ; Number of samples to take for each of the vertex (more means more memory requirement)
 samples_per_vertex=6
-is_sampling_balanced=true
+is_sampling_balanced=1
 
 
 ; Weight of losses, for cells, rows and cols respectively
