@@ -100,3 +100,48 @@ validate_after=100
 
 ; This has to be a multiple of validate_after otherwise it won't work
 visualize_validation_results_after=150
+
+
+; Understand the definition of elements from the above config; but in practice use this one as the starter as many users are facing issues
+; model=conv_graph_dgcnn_fast_conv
+[conv_graph_dgcnn_fast_conv]
+from_scratch=0
+is_sampling_balanced=1
+batch_size=25
+train_for_iterations=20000000000
+learning_rate=0.0001
+num_testing_samples=100
+summary_path=/home/srq/Training/icdar_19_cam/gravnet_fast_conv/summary
+model_path=/home/srq/Training/icdar_19_cam/gravnet_fast_conv
+test_out_path=/home/srq/Training/icdar_19_cam/gravnet_fast_conv/test
+
+training_files_list=/home/srq/Datasets/tukldataset/train_files.txt
+validation_files_list=/home/srq/Datasets/tukldataset/validate_files.txt
+test_files_list=/home/srq/Datasets/tukldataset/test_files.txt
+
+model=conv_graph_dgcnn_fast_conv
+profiler_output_file_name=/home/srq/Training/icdar_19_cam/gravnet_fast_conv/profiler
+visual_feedback_out_path=/home/srq/Training/icdar_19_cam/gravnet_fast_conv/visual_feedback
+max_vertices=900
+num_vertex_features=5
+max_image_height=768
+max_image_width=1366
+image_channels=1
+max_words_len=30
+dim_vertex_x_position=0
+dim_vertex_y_position=1
+dim_vertex_x2_position=2
+dim_vertex_y2_position=3
+dim_num_vertices=2
+num_global_features=4
+dim_width=1
+dim_height=0
+num_data_dims=3
+variable_scope=conv_graph_dgcnn_fast_conv_1
+samples_per_vertex=6
+loss_alpha=1
+loss_beta=1
+loss_gamma=1
+save_after_iterations=50
+validate_after=100
+visualize_validation_results_after=150
