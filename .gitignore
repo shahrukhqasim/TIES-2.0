@@ -1,4 +1,4 @@
 .idea
 venv
-*.ini
+# *.ini
 __pycache__
