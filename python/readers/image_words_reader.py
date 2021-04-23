@@ -53,10 +53,7 @@ class ImageWordsReader:
         # print("Data dims", self.num_data_dims)
         # print("Max word length", self.max_word_length)
 
-        with open(self.files_list) as f:
-            content = f.readlines()
-        file_paths = [x.strip() for x in content]
-        dataset = tf.data.TFRecordDataset(file_paths, compression_type='GZIP')
+        dataset = tf.data.TFRecordDataset(self.files_list, compression_type='GZIP')
         dataset = dataset.map(self._parse_function)
         if shuffle:
             dataset = dataset.shuffle(

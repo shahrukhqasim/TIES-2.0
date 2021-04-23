@@ -6,6 +6,7 @@ from caloGraphNN import *
 from readers.image_words_reader import ImageWordsReader
 from ops.ties import *
 import os
+import sys
 import cv2
 from models.conv_segment import BasicConvSegment
 from models.dgcnn_segment import DgcnnSegment
@@ -14,6 +15,13 @@ from libs.visual_feedback_generator import VisualFeedbackGenerator
 import random
 import numpy as np
 from libs.helpers import *
+import math
+
+
+def split_array(arr, fract):
+    split_idx = math.floor(len(arr) * fract)
+    return arr[:split_idx], arr[split_idx:]
+
 
 class BasicModel(ModelInterface):
     def set_conv_segment(self, conv_segment):
@@ -27,6 +35,18 @@ class BasicModel(ModelInterface):
         self.max_vertices = gconfig.get_config_param("max_vertices", "int")
         if not training:
             gconfig.set_config_param("samples_per_vertex", str(self.max_vertices))
+
+        tf_records_dir_path = gconfig.get_config_param("tf_records_dir_path", "str")
+        S3_PATH_TO_DATASET = 's3://hs-ml-data/experiments/iliya.zhechev/data/ties/'
+
+        if not os.path.exists(tf_records_dir_path):
+            os.system(f'aws s3 sync {S3_PATH_TO_DATASET} {tf_records_dir_path}')
+
+        tf_record_paths = [f'{tf_records_dir_path}/{fn}' for fn in os.listdir(tf_records_path)]
+        random.shuffle(tf_record_paths)
+
+        train_files, other_files = split_array(tf_record_paths, 0.5)
+        val_files, test_files = split_array(other_files, 0.5)
 
         self.num_vertex_features = gconfig.get_config_param("num_vertex_features", "int")
         self.image_height = gconfig.get_config_param("max_image_height", "int")
@@ -43,9 +63,6 @@ class BasicModel(ModelInterface):
         self.dim_num_vertices = gconfig.get_config_param("dim_num_vertices", "int")
         self.samples_per_vertex = gconfig.get_config_param("samples_per_vertex", "int")
         self.variable_scope = gconfig.get_config_param("variable_scope", "str")
-        self.training_files_list = gconfig.get_config_param("training_files_list", "str")
-        self.validation_files_list = gconfig.get_config_param("test_files_list", "str")
-        self.test_files_list = gconfig.get_config_param("validation_files_list", "str")
         self.learning_rate = gconfig.get_config_param("learning_rate", "float")
 
         self.is_sampling_balanced = gconfig.get_config_param("is_sampling_balanced", "bool")
@@ -61,11 +78,11 @@ class BasicModel(ModelInterface):
         self.momentum = 0.6
 
         if training:
-            self.validation_reader = ImageWordsReader(self.validation_files_list, self.num_global_features,
+            self.validation_reader = ImageWordsReader(val_files, self.num_global_features,
                                                       self.max_vertices, self.num_vertex_features,
                                                       self.image_height, self.image_width, self.image_channels,
                                                       self.max_words_len, self.num_batch)
-            self.training_reader = ImageWordsReader(self.training_files_list, self.num_global_features,
+            self.training_reader = ImageWordsReader(train_files, self.num_global_features,
                                                       self.max_vertices, self.num_vertex_features,
                                                       self.image_height, self.image_width, self.image_channels,
                                                       self.max_words_len, self.num_batch)
@@ -74,7 +91,8 @@ class BasicModel(ModelInterface):
             self.visual_feedback_generator = VisualFeedbackGenerator(self.visual_feedback_out_path)
             self.visual_feedback_generator.start_thread()
         else:
-            self.testing_reader = ImageWordsReader(self.validation_files_list, self.num_global_features,
+            # TODO: Not sure if this should be train_files
+            self.testing_reader = ImageWordsReader(val_files, self.num_global_features,
                                                       self.max_vertices, self.num_vertex_features,
                                                       self.image_height, self.image_width, self.image_channels,
                                                       self.max_words_len, self.num_batch)

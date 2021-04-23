@@ -1,4 +1,6 @@
 .idea
 venv
 # *.ini
+.data
 __pycache__
+.vscode
