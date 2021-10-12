@@ -2,7 +2,7 @@ tensorflow-gpu==1.12.0
 matplotlib==3.0.3
 networkx==2.2
 numpy==1.16.2
-opencv-python==4.0.0.21
+opencv-python==4.1.1.26
 tensorboard==1.12.2
 overrides
 configparser
